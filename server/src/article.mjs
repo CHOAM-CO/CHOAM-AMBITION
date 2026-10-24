@@ -57,7 +57,8 @@ async function summarize(title, paragraphs) {
     messages: [{ role: 'user', timestamp: Date.now(), content: [{ type: 'text', text: `제목: ${title}\n\n${body}` }] }],
   }, { apiKey: config.apiKey, maxTokens: 250, onPayload: visionPayload });
   if (res.stopReason === 'error') throw new Error(res.errorMessage || 'summary failed');
-  return textOf(res).replace(/\s+/g, ' ').trim();
+  const sents = textOf(res).replace(/\s+/g, ' ').trim().match(/[^.!?]+[.!?]+/g);
+  return sents ? sents.slice(0, 2).join(' ').trim() : textOf(res).trim(); // hard cap: 2 sentences
 }
 
 async function read(url, totalMs) {
