@@ -36,6 +36,13 @@ export function run(cmd, args, { timeoutMs = 120000, binary = false } = {}) {
   });
 }
 
+// Title/channel/duration via -J (JSON): --print output is in the console codepage on the Windows box and mangles Korean.
+async function ytMeta(id, timeoutMs = 45000) {
+  const j = JSON.parse(await run(tool('yt-dlp'), ['--no-playlist', '--skip-download', '--no-warnings', '--encoding', 'utf-8', '--js-runtimes', `node:${process.execPath}`, '--cache-dir', config.ytCacheDir,
+    '-J', `https://www.youtube.com/watch?v=${id}`], { timeoutMs }));
+  return { title: j.title, channel: j.channel || j.uploader, duration: Number(j.duration) || undefined };
+}
+
 // ---- catalog ------------------------------------------------------------------------------
 let catalog = [];
 let chain = Promise.resolve();
@@ -106,9 +113,8 @@ async function download({ id, addAfter }) {
     if (addAfter) {
       let meta = { id };
       try {
-        const [title, channel, dur] = (await run(tool('yt-dlp'), ['--no-playlist', '--skip-download', '--js-runtimes', `node:${process.execPath}`, '--cache-dir', config.ytCacheDir,
-          '--print', '%(title)s\n%(channel)s\n%(duration)s', `https://www.youtube.com/watch?v=${id}`], { timeoutMs: 60000 })).split(/\r?\n/);
-        meta = { id, title, channel, duration: Number(dur) || undefined };
+        const m = await ytMeta(id, 60000);
+        meta = { id, title: m.title, channel: m.channel, duration: m.duration };
       } catch (e) { log('metadata failed', id, e.message); meta.title = id; }
       await addToCatalog(meta);
       if (meta.duration) durations.set(id, meta.duration);
@@ -138,9 +144,7 @@ const httpErr = (status, msg) => Object.assign(new Error(msg), { status });
 
 async function fetchMeta(id) {
   try {
-    const [title, channel, dur] = (await run(tool('yt-dlp'), ['--no-playlist', '--skip-download', '--no-warnings', '--js-runtimes', `node:${process.execPath}`, '--cache-dir', config.ytCacheDir,
-      '--print', '%(title)s\n%(channel)s\n%(duration)s', `https://www.youtube.com/watch?v=${id}`], { timeoutMs: 45000 })).split(/\r?\n/);
-    return { title, channel, duration: Number(dur) || undefined };
+    return await ytMeta(id);
   } catch (e) {
     log('metadata failed', id, e.message);
     try { // oEmbed fallback: title/author only (duration then enforced by --match-filter at download)
@@ -184,10 +188,30 @@ export function removeVideo(input) {
 
 export const statusOf = (id) => ({ videoId: id, cached: isCached(id), ...(state.get(id) || { state: isCached(id) ? 'cached' : 'unknown' }) });
 
+// One-time repair: entries saved while yt-dlp output was mis-decoded contain U+FFFD; re-fetch their metadata.
+async function repairCatalog() {
+  const bad = catalog.filter((e) => /\uFFFD/.test(`${e.title}${e.channel || ''}`));
+  for (const e of bad) {
+    try {
+      const m = await ytMeta(e.id);
+      if (!m.title || /\uFFFD/.test(m.title)) continue;
+      chain = chain.then(async () => {
+        const cur = await readCatalog();
+        const t = cur.find((x) => x.id === e.id);
+        if (t) { t.title = m.title; if (m.channel) t.channel = m.channel; if (m.duration && !t.duration) t.duration = m.duration; }
+        const tmp = `${catalogFile()}.tmp`;
+        await fsp.writeFile(tmp, JSON.stringify(cur, null, 2)); await fsp.rename(tmp, catalogFile()); catalog = cur;
+      }).catch((er) => log('repair write failed', er.message));
+      await chain; log('repaired title', e.id, m.title);
+    } catch (er) { log('repair failed', e.id, er.message); }
+  }
+}
+
 export async function initYoutube() {
   await fsp.mkdir(ytDir(), { recursive: true });
   await reloadCatalog();
   fs.watchFile(catalogFile(), { interval: 5000 }, () => { reloadCatalog().catch((e) => log('reload failed', e.message)); });
+  repairCatalog().catch((e) => log('repair crashed', e.message));
   log(`catalog ${catalog.length} videos, cached ${catalog.filter((e) => isCached(e.id)).length}`);
 }
 
