@@ -14,11 +14,11 @@ const SCENE_SYSTEM = `You transcribe ONE video frame into a compact scene log en
  "people": [{"desc": Korean appearance/role/outfit only, "action": Korean verb phrase of what they do}] (max 5, [] if none),
  "features": [Korean short phrases: dominant colours, legible on-screen text (quote it), setting/place, lighting, mood, camera shot type, max 8],
  "summary": ONE Korean line (<= 60 chars) saying what is on screen}
-Rules: Korean only. Never identify a real person by face or name from appearance. Name a brand/model only if its logo or text is clearly legible. No ring/marker mentions. Be concrete and terse; no sentences in the lists.`;
+Rules: Korean only. Never identify a real person by face or name from appearance. Name a brand/model only if its logo or text is clearly legible. No ring/marker mentions. Be concrete and terse; no sentences in the lists. Never put a double quote character inside a string value (quote on-screen text with single quotes ' ').`;
 
 const strList = (a, n) => (Array.isArray(a) ? a : []).map((x) => String(x ?? '').trim().slice(0, 80)).filter(Boolean).slice(0, n);
 
-async function describe(jpeg) {
+async function describeOnce(jpeg) {
   const res = await completeSimple(visionModel, {
     systemPrompt: SCENE_SYSTEM,
     messages: [{ role: 'user', timestamp: Date.now(), content: [{ type: 'image', data: jpeg.toString('base64'), mimeType: 'image/jpeg' }, { type: 'text', text: 'JSON for this frame.' }] }],
@@ -31,6 +31,10 @@ async function describe(jpeg) {
     features: strList(j.features, 8),
     summary: String(j.summary ?? '').trim().slice(0, 120),
   };
+}
+
+async function describe(jpeg) {
+  try { return await describeOnce(jpeg); } catch (e) { if (!/JSON/.test(e.message)) throw e; return describeOnce(jpeg); } // malformed JSON from the model: one retry
 }
 
 export async function handleScene(body, { HttpError }) {
