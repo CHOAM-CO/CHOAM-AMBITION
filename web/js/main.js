@@ -1,9 +1,9 @@
-import { api, MOCK, PARAMS } from './api.js';
-import { CONFIG, GazeEventDetector } from './events.js';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js';
-import { createMp4Player, createYouTubePlayer, parseYouTube } from './player.js';
-import { grab, startDisplayCapture, hasDisplayCapture } from './capture.js';
-import { toast, addCapture, showBubble, bubbleActive, dismissBubble, renderSummary } from './ui.js';
+import { api, MOCK, PARAMS } from './api.js?v=r3';
+import { CONFIG, GazeEventDetector } from './events.js?v=r3';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r3';
+import { createMp4Player, createYouTubePlayer, parseYouTube } from './player.js?v=r3';
+import { grab, startDisplayCapture, hasDisplayCapture } from './capture.js?v=r3';
+import { toast, addCapture, showBubble, bubbleActive, dismissBubble, renderSummary } from './ui.js?v=r3';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
