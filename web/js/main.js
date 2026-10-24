@@ -318,7 +318,7 @@ async function doCapture(ev) {
 let lastScene = 0, sceneOff = false, sceneTimer = null;
 async function sceneSnap(ev, extra = {}) {
   const p = S.player, v = S.video;
-  if (sceneOff || !p || !v || !S.session || S.state !== 'watch' || S.finished || !p.isPlaying()) return;
+  if (sceneOff || !p || !v || !S.session || S.state !== 'watch' || S.finished || (!p.isPlaying() && !extra.expression)) return; // an expression is worth a note even while paused
   const now = performance.now();
   if (now - lastScene < 2000) return; // the server guards at 2 s as well
   lastScene = now;
