@@ -11,7 +11,7 @@ One webcam reads your gaze, your face and your hands. NUNCHI remembers what you 
 [English](README.md) | [한국어](README.ko.md)
 
 [![Live demo](https://img.shields.io/badge/LIVE-ambition.choam.studio-0a6cf1?style=for-the-badge)](https://ambition.choam.studio)
-[![Pitch](https://img.shields.io/badge/PITCH-PDF-111111?style=for-the-badge)](pitch/nunchi-pitch.pdf)
+[![Pitch](https://img.shields.io/badge/PITCH-PDF-111111?style=for-the-badge)](pitch/nunchi-en-pitch.pdf)
 
 ![Gaze](https://img.shields.io/badge/gaze-EyeTheia%20iTracker%20on%20WebGPU-0a6cf1?style=flat-square)
 ![Voice](https://img.shields.io/badge/voice-Silero%20%C2%B7%20Qwen3--ASR%20%C2%B7%20Pocket--TTS-0a6cf1?style=flat-square)
@@ -19,13 +19,13 @@ One webcam reads your gaze, your face and your hands. NUNCHI remembers what you 
 ![Build](https://img.shields.io/badge/frontend-no%20build%20step-111111?style=flat-square)
 ![License](https://img.shields.io/badge/license-Apache--2.0%20%2B%20GPL--3.0%20(gaze)-111111?style=flat-square)
 
-[**Live demo**](https://ambition.choam.studio) · [Pitch (PDF)](pitch/nunchi-pitch.pdf) · [How it works](#how-it-works) · [Run it](#run-it) · [Vision](#vision)
+[**Live demo**](https://ambition.choam.studio) · [Pitch (PDF)](pitch/nunchi-en-pitch.pdf) · [How it works](#how-it-works) · [Run it](#run-it) · [Vision](#vision)
 
 <br>
 
-<a href="pitch/nunchi-pitch.pdf"><img src="pitch/nunchi-p1.png" width="100%" alt="NUNCHI pitch, page 1: an agent that notices without being told. The 4-stage lifecycle and the Awareness Stack."></a>
+<a href="pitch/nunchi-en-pitch.pdf"><img src="pitch/nunchi-en-p1.png" width="100%" alt="NUNCHI pitch, page 1: an agent that notices without being told. The 4-stage lifecycle and the Awareness Stack."></a>
 
-<sub>Pitch p.1 (demo). Full 2-page board: <a href="pitch/nunchi-pitch.pdf">PDF</a>. Made by Eunho, PR #1.</sub>
+<sub>Pitch p.1 (demo). Full 2-page board: <a href="pitch/nunchi-en-pitch.pdf">PDF</a>. Made by Eunho, PR #2 (Korean board: PR #1).</sub>
 
 </div>
 
@@ -240,7 +240,7 @@ Tune values live from the console via `window.AMBITION_CONFIG` (gaze, gestures, 
 ## Vision
 
 <div align="center">
-<a href="pitch/nunchi-pitch.pdf"><img src="pitch/nunchi-p2.png" width="100%" alt="NUNCHI pitch, page 2: people move toward products that move their hearts. What if an agent went beyond convenience and moved you?"></a>
+<a href="pitch/nunchi-en-pitch.pdf"><img src="pitch/nunchi-en-p2.png" width="100%" alt="NUNCHI pitch, page 2: people move toward products that move their hearts. What if an agent went beyond convenience and moved you?"></a>
 </div>
 
 <br>
@@ -287,6 +287,6 @@ This repo is **Apache-2.0** ([`LICENSE`](LICENSE)). The gaze code `web/js/eyethe
 | Client-side inference | onnxruntime-web | MIT |
 | Agent runtime | pi-ai, pi-agent-core | per package |
 
-The pitch board (`pitch/`) was written by Eunho in PR #1 (`pitch` branch). This README follows its structure and wording.
+The pitch board (`pitch/`) was written by Eunho (Korean: PR #1, English: PR #2). This README follows its structure and wording.
 
 <div align="center"><sub>NUNCHI by CHOAM · AMBITION Hackathon</sub></div>
