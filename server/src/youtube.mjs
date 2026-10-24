@@ -269,3 +269,14 @@ export async function grabFrames({ youtubeId, videoUrl }, videoTime, gaze) {
   const [full, crop] = await Promise.all([fullP, cropP]);
   return { full, crop, t };
 }
+
+// Flat YouTube search via yt-dlp (no download). recent=true sorts newest first (ytsearchdate). Durations are seconds (null when unknown, e.g. live).
+export async function searchVideos(query, { n = 6, recent = false } = {}) {
+  const q = String(query || '').trim().slice(0, 120);
+  if (!q) return [];
+  const out = await run(tool('yt-dlp'), ['--flat-playlist', '--no-warnings', '--js-runtimes', `node:${process.execPath}`, '--cache-dir', config.ytCacheDir,
+    '--print', '%(id)s\t%(duration)s\t%(title)s\t%(channel)s\t%(view_count)s', `${recent ? 'ytsearchdate' : 'ytsearch'}${Math.min(10, n)}:${q}`], { timeoutMs: 30000 });
+  return out.split(/\r?\n/).map((l) => l.split('\t')).filter((p) => validYtId(p[0])).map((p) => ({
+    youtubeId: p[0], duration: Number(p[1]) || null, title: p[2], channel: p[3] !== 'NA' ? p[3] : null, views: Number(p[4]) || null, url: `https://www.youtube.com/watch?v=${p[0]}`,
+  }));
+}

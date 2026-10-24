@@ -115,9 +115,7 @@ export function linksFor(q, category) {
     case 'food': return [
       { title: '유튜브에서 레시피 검색', url: `https://www.youtube.com/results?search_query=${enc(q + ' 레시피')}` },
       { title: '네이버에서 맛집 검색', url: `https://search.naver.com/search.naver?query=${enc(q + ' 맛집')}` }];
-    default: return [
-      { title: '네이버에서 검색', url: `https://search.naver.com/search.naver?query=${enc(q)}` },
-      { title: '유튜브에서 검색', url: `https://www.youtube.com/results?search_query=${enc(q)}` }];
+    default: return []; // no generic 네이버/유튜브 search cards; the agent offers concrete items instead
   }
 }
 

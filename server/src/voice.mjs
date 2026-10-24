@@ -69,7 +69,19 @@ async function runTurn({ session, body, trigger, text, emit, say, isClosed, t0, 
   const { frames, images, note, ctx } = await buildContext(session, body, trigger, framesPromise);
   const instruction = (trigger === 'user' ? '' : (trigger === 'idle' ? '\n(시청자는 말이 없어요. idle: 화면에 대해 먼저 한마디 할 만하면 [SAY], 아니면 [SKIP].)' : '\n(시청자가 방금 당신의 말에 답이 없어요. follow-up: 가볍게 이어서 한마디 하거나 [SKIP].)')) + hint;
   const clearOffer = () => store.withSession(session.id, async () => { const s = await store.getSession(session.id); if (s?.pendingOffer) { delete s.pendingOffer; await store.saveSession(s); } }).catch(() => {});
-  if (trigger === 'user') clearOffer(); // the viewer reacted to the offer (accept goes to SEARCH below, anything else drops it)
+  if (trigger === 'user') {
+    // pending VIDEO/ARTICLE offer + a yes (explicit accept, or a short yes by voice/chat) -> tell the client to play/open it; no model call
+    const cur = await store.getSession(session.id);
+    const pend = cur?.pendingOffer && Date.now() - cur.pendingOffer.at < 5 * 60000 && (cur.pendingOffer.kind === 'video' || cur.pendingOffer.kind === 'article') ? cur.pendingOffer : null;
+    if (pend && (forceSearch || keywordAnswer(text) === 'yes')) {
+      out.mode = 'PLAY'; out.tGate = Date.now() - t0;
+      emit({ type: 'play', kind: pend.kind, ...(pend.youtubeId ? { youtubeId: pend.youtubeId } : {}), title: pend.title, url: pend.url });
+      const line = pend.kind === 'video' ? '네, 바로 틀어드릴게요.' : '네, 기사 열어드릴게요.';
+      sayAll(line); await clearOffer(); await recordTurn(session, body, text, line, []);
+      return out;
+    }
+    clearOffer();
+  } // the viewer reacted to the offer (accept goes to SEARCH below, anything else drops it)
   if (forceSearch) { out.mode = 'SEARCH'; out.tGate = Date.now() - t0; return searchPath(); }
   const stream = streamSimple(visionModel, {
     systemPrompt: VOICE_SYSTEM,
@@ -112,6 +124,7 @@ async function runTurn({ session, body, trigger, text, emit, say, isClosed, t0, 
     out.tools = r.tools;
     if (r.items.length) emit({ type: 'items', items: r.items, ...(r.captureId ? { captureId: r.captureId } : {}) });
     const [ss] = splitSentences(r.reply, true); ss.forEach(sayAll);
+    if (r.offer) emit({ type: 'offer', ...r.offer });
     await recordTurn(session, body, text, r.reply, r.items);
     return out;
   }

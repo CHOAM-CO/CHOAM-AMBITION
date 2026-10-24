@@ -127,7 +127,7 @@ async function handleCapture(body) {
     const clear = meta.clear && meta.query && v?.say && meta.confidence >= 0.6;
     if (clear && Date.now() - (s.lastSpokenAt || 0) >= config.speakCooldownMs && !s.spoken.includes(key)) {
       speak = true; s.lastSpokenAt = Date.now(); s.spoken.push(key);
-      s.pendingOffer = { captureId, say: v.say, query: meta.query, label: meta.item.label, videoTime: meta.videoTime, at: Date.now() };
+      s.pendingOffer = { kind: 'search', captureId, say: v.say, query: meta.query, label: meta.item.label, videoTime: meta.videoTime, at: Date.now() };
     }
     await store.saveSession(s);
   });
