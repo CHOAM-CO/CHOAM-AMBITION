@@ -8,6 +8,7 @@ import { analyzeCrop, summarize, linksFor, visionModel, summaryModel } from './a
 import * as yt from './youtube.mjs';
 import { handleChat } from './chat.mjs';
 import { handleVoiceTurn } from './voice.mjs';
+import { ttsRoute } from '../tts/index.mjs';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -171,6 +172,7 @@ async function handleSummary(body) {
 
 async function route(req, res, url) {
   const p = url.pathname, method = req.method;
+  if (await ttsRoute(req, res, p)) return;
   if (method === 'GET' && p === '/api/health') {
     return send(res, 200, { ok: true, models: { vision: visionModel.id, summary: summaryModel.id }, startedAt: config.startedAt });
   }
