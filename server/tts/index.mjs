@@ -13,7 +13,7 @@ const log = (...a) => console.log(new Date().toISOString(), 'tts', ...a);
 
 let engine = null;
 function getEngine() {
-  if (!engine) engine = createEngine(path.join(DIR, MODEL_FILE), { voicesDir: path.join(DIR, 'voices'), threads: Number(process.env.AMBITION_TTS_THREADS || 4) });
+  if (!engine) engine = createEngine(path.join(DIR, MODEL_FILE), { voicesDir: path.join(DIR, 'voices'), threads: Number(process.env.AMBITION_TTS_THREADS || 4), workers: Number(process.env.AMBITION_TTS_WORKERS || 3) });
   return engine;
 }
 
@@ -56,7 +56,7 @@ if (process.env.AMBITION_TTS_PRELOAD !== '0' && modelsPresent(DIR)) {
     const t0 = Date.now();
     getEngine().load().then(() => {
       log(`model loaded in ${Date.now() - t0}ms; warming`);
-      return getEngine().synth('안녕하세요.').then(() => log(`warm done at ${Date.now() - t0}ms`));
+      return Promise.all(Array.from({ length: getEngine().workers }, () => getEngine().synth('안녕하세요.'))).then(() => log(`warm done at ${Date.now() - t0}ms`));
     }).catch((e) => log('preload failed:', e.message));
   }, 1500).unref();
 }
@@ -97,11 +97,12 @@ export async function ttsRoute(req, res, p) {
   res.on('close', () => { if (!res.writableEnded) aborted = true; });
   const t0 = Date.now();
   try {
+    const jobs = sentences.map((t) => { const ts = Date.now(); return e.synth(t, voice).then((wav) => ({ wav, synthMs: Date.now() - ts }), (err) => ({ err })); }); // parallel over the worker pool, emitted in order
     for (let i = 0; i < sentences.length && !aborted; i++) {
-      const ts = Date.now();
-      const wav = await e.synth(sentences[i], voice);
-      const seconds = Math.max(0, (wav.length - 44) / 2 / 24000);
-      res.write(JSON.stringify({ i, n: sentences.length, text: sentences[i], seconds: +seconds.toFixed(2), synthMs: Date.now() - ts, wav: wav.toString('base64') }) + '\n');
+      const j = await jobs[i];
+      if (j.err) throw j.err;
+      const seconds = Math.max(0, (j.wav.length - 44) / 2 / 24000);
+      res.write(JSON.stringify({ i, n: sentences.length, text: sentences[i], seconds: +seconds.toFixed(2), synthMs: j.synthMs, wav: j.wav.toString('base64') }) + '\n');
     }
     res.end(JSON.stringify({ done: true, totalMs: Date.now() - t0 }) + '\n');
   } catch (err) {
