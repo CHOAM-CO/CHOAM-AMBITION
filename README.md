@@ -164,8 +164,8 @@ flowchart LR
 **30 seconds, no server (mock mode)**
 
 ```bash
-git clone https://github.com/CHOAM-CO/CHOAM-AMBITION.git
-cd CHOAM-AMBITION/web
+git clone https://github.com/CHOAM-CO/Nunchi.git
+cd Nunchi/web
 python3 -m http.server 8123      # any static server works
 # open http://localhost:8123/?mock=1&gaze=mouse
 ```

@@ -162,8 +162,8 @@ flowchart LR
 **30초: 서버 없이 UI만 보기 (mock)**
 
 ```bash
-git clone https://github.com/CHOAM-CO/CHOAM-AMBITION.git
-cd CHOAM-AMBITION/web
+git clone https://github.com/CHOAM-CO/Nunchi.git
+cd Nunchi/web
 python3 -m http.server 8123      # 아무 정적 서버면 된다
 # http://localhost:8123/?mock=1&gaze=mouse
 ```
