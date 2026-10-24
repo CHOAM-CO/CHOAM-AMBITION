@@ -22,12 +22,12 @@ const fastPayload = (thinking) => (payload) => ({
   thinking,
   output_config: { ...(payload.output_config || {}), effort: 'low' },
 });
-const visionPayload = fastPayload({ type: 'disabled' });
-const summaryPayload = fastPayload({ type: 'between_tools' });
+export const visionPayload = fastPayload({ type: 'disabled' });
+export const summaryPayload = fastPayload({ type: 'between_tools' });
 
-const normLabel = (s) => (s || '').toLowerCase().replace(/\s+/g, '');
-const textOf = (msg) => (msg.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
-function parseJson(text) {
+export const normLabel = (s) => (s || '').toLowerCase().replace(/\s+/g, '');
+export const textOf = (msg) => (msg.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
+export function parseJson(text) {
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) throw new Error(`no JSON in model output: ${text.slice(0, 200)}`);
   return JSON.parse(m[0]);
@@ -181,6 +181,12 @@ export async function summarize(session, captures) {
       }),
     },
     {
+      name: 'list_chat', label: 'List chat',
+      description: 'The conversation the viewer had with the assistant while watching (what they asked about, e.g. product price lookups). Things they asked about are strong interest signals.',
+      parameters: Type.Object({}),
+      execute: async () => ({ content: [{ type: 'text', text: JSON.stringify((session.chat || []).slice(-30).map((t) => ({ role: t.role, text: t.text, items: t.items?.map((i) => i.name) }))) }], details: {} }),
+    },
+    {
       name: 'aggregate_by_label', label: 'Aggregate by label',
       description: 'Group captures by label (any category: product, place, food, animal, text, person, scene, other): capture count (repeat looks), total/max dwell ms, best capture id, userAnswer ("yes" = viewer confirmed by nodding). Sorted with viewer-confirmed products first, then by total dwell. Products the viewer rejected are already removed.',
       parameters: Type.Object({}),
@@ -204,7 +210,7 @@ export async function summarize(session, captures) {
   const agent = new Agent({
     initialState: {
       systemPrompt: `You are an assistant reviewing what a viewer's eyes lingered on while watching a video (\"관심 있어 보였던 것들\"): products, places, food, animals, text, people's outfits, scenes - any category.
-Use the tools to review the session's captures, weigh longer dwell and repeated looks at the same product (same label across captures) as stronger interest, ignore near-duplicates, then call submit_recommendations once with the top 3-5 distinct things across categories. Each reason is one natural Korean polite sentence mentioning the evidence (e.g. 몇 초 동안 / 여러 번 다시 봤어요). Products with userAnswer \"yes\" were explicitly confirmed by the viewer (nod): rank them above unconfirmed ones. Products the viewer rejected are already excluded. Use the capture with the longest dwell as captureId.`,
+Use the tools to review the session's captures (and list_chat if the viewer talked to the assistant: explicit questions about a thing count as strong interest), weigh longer dwell and repeated looks at the same product (same label across captures) as stronger interest, ignore near-duplicates, then call submit_recommendations once with the top 3-5 distinct things across categories. Each reason is one natural Korean polite sentence mentioning the evidence (e.g. 몇 초 동안 / 여러 번 다시 봤어요). Products with userAnswer \"yes\" were explicitly confirmed by the viewer (nod): rank them above unconfirmed ones. Products the viewer rejected are already excluded. Use the capture with the longest dwell as captureId.`,
       model: summaryModel, tools, messages: [],
     },
     getApiKey: () => config.apiKey,

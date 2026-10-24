@@ -135,16 +135,16 @@ export async function initYoutube() {
   log(`catalog ${catalog.length} videos, cached ${catalog.filter((e) => isCached(e.id)).length}`);
 }
 
-async function probe(id) {
-  const f = cachedPath(id);
+async function probe(f) {
   const out = await run(tool('ffprobe'), ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:format=duration', '-of', 'json', f], { timeoutMs: 20000 });
   const j = JSON.parse(out);
   const info = { w: j.streams?.[0]?.width, h: j.streams?.[0]?.height, duration: Number(j.format?.duration) };
-  if (Number.isFinite(info.duration)) durations.set(id, info.duration);
+  if (Number.isFinite(info.duration)) durations.set(f, info.duration);
   return info;
 }
 const probeCache = new Map();
-const getInfo = (id) => { if (!probeCache.has(id)) probeCache.set(id, probe(id).catch((e) => { probeCache.delete(id); throw e; })); return probeCache.get(id); };
+const getInfoFile = (f) => { if (!probeCache.has(f)) probeCache.set(f, probe(f).catch((e) => { probeCache.delete(f); throw e; })); return probeCache.get(f); };
+const getInfo = (id) => getInfoFile(cachedPath(id));
 
 export async function listYoutube() {
   const out = [];
@@ -168,7 +168,11 @@ export class NotCachedError extends Error {}
 export async function cropFrame(id, videoTime, gaze) {
   if (!validYtId(id)) throw Object.assign(new Error('invalid youtubeId'), { status: 400 });
   if (!isCached(id)) throw new NotCachedError();
-  const { w, h, duration } = await getInfo(id);
+  return cropFile(cachedPath(id), videoTime, gaze);
+}
+
+async function cropFile(file, videoTime, gaze) {
+  const { w, h, duration } = await getInfoFile(file);
   const gx = Math.min(1, Math.max(0, Number(gaze?.x) || 0.5)), gy = Math.min(1, Math.max(0, Number(gaze?.y) || 0.5));
   const t = Math.max(0, Math.min(Number(videoTime) || 0, (Number.isFinite(duration) ? duration : 1e9) - 0.3));
   const S = Math.max(64, Math.round((Math.min(w, h) * 0.55) / 2) * 2);
@@ -179,7 +183,31 @@ export async function cropFrame(id, videoTime, gaze) {
   // ring: 50% red blend on a thin circle (geq works per-pixel on the small crop only)
   const ring = `between(hypot(X-${cx},Y-${cy}),${R}-${T},${R}+${T})`;
   const vf = `crop=${S}:${S}:${x0}:${y0},format=rgb24,geq=r='if(${ring},(r(X,Y)+255)/2,r(X,Y))':g='if(${ring},g(X,Y)/2,g(X,Y))':b='if(${ring},b(X,Y)/2,b(X,Y))',format=yuvj420p`;
-  const jpeg = await run(tool('ffmpeg'), ['-v', 'error', '-ss', t.toFixed(3), '-i', cachedPath(id), '-an', '-frames:v', '1', '-vf', vf, '-q:v', '3', '-f', 'image2pipe', '-c:v', 'mjpeg', 'pipe:1'], { timeoutMs: 30000, binary: true });
+  const jpeg = await run(tool('ffmpeg'), ['-v', 'error', '-ss', t.toFixed(3), '-i', file, '-an', '-frames:v', '1', '-vf', vf, '-q:v', '3', '-f', 'image2pipe', '-c:v', 'mjpeg', 'pipe:1'], { timeoutMs: 30000, binary: true });
   if (jpeg.length < 100) throw Object.assign(new Error('ffmpeg produced no frame'), { status: 422 });
   return { jpeg, crop: { x: x0, y: y0, size: S, frame: { w, h } }, t };
+}
+
+// Local mp4 from the media dir (basename only, no traversal).
+export function mp4Path(videoUrl) {
+  const m = /^\/media\/([^/?#]+\.mp4)$/i.exec(String(videoUrl || '').split('?')[0]);
+  if (!m) return null;
+  const f = path.join(config.mediaDir, path.basename(decodeURIComponent(m[1])));
+  return fs.existsSync(f) ? f : null;
+}
+
+// Full frame (downscaled to <=768 px wide) plus gaze-ring crop (null when no gaze) for the chat agent.
+export async function grabFrames({ youtubeId, videoUrl }, videoTime, gaze) {
+  let file;
+  if (youtubeId) {
+    if (!validYtId(youtubeId)) throw new Error('invalid youtubeId');
+    if (!isCached(youtubeId)) throw new NotCachedError();
+    file = cachedPath(youtubeId);
+  } else { file = mp4Path(videoUrl); if (!file) throw new Error('no video file for this session'); }
+  const { duration } = await getInfoFile(file);
+  const t = Math.max(0, Math.min(Number(videoTime) || 0, (Number.isFinite(duration) ? duration : 1e9) - 0.3));
+  const fullP = run(tool('ffmpeg'), ['-v', 'error', '-ss', t.toFixed(3), '-i', file, '-an', '-frames:v', '1', '-vf', 'scale=768:-2', '-q:v', '4', '-f', 'image2pipe', '-c:v', 'mjpeg', 'pipe:1'], { timeoutMs: 30000, binary: true });
+  const cropP = gaze && Number.isFinite(+gaze.x) && Number.isFinite(+gaze.y) ? cropFile(file, t, gaze).then((r) => r.jpeg) : Promise.resolve(null);
+  const [full, crop] = await Promise.all([fullP, cropP]);
+  return { full, crop, t };
 }

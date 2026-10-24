@@ -6,6 +6,7 @@ import { config } from './config.mjs';
 import * as store from './store.mjs';
 import { analyzeCrop, summarize, linksFor, visionModel, summaryModel } from './ai.mjs';
 import * as yt from './youtube.mjs';
+import { handleChat } from './chat.mjs';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -163,6 +164,7 @@ async function route(req, res, url) {
   }
   let ym;
   if (method === 'GET' && (ym = p.match(/^\/api\/youtube\/status\/([^/]+)$/))) return send(res, 200, yt.statusOf(ym[1]));
+  if (method === 'POST' && p === '/api/chat') return send(res, 200, await handleChat(await readJson(req), { HttpError }));
   if (method === 'POST' && p === '/api/feedback') return send(res, 200, await handleFeedback(await readJson(req)));
   if (method === 'POST' && p === '/api/summary') return send(res, 200, await handleSummary(await readJson(req)));
   let m;
