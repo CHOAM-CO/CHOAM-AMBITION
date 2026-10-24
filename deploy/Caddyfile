@@ -21,7 +21,9 @@ http://:8787 {
 		file_server
 	}
 
+	# Hackathon: no CDN/browser caching of the app so pushes show up within a minute.
 	handle {
+		header Cache-Control "no-store"
 		file_server
 	}
 }
