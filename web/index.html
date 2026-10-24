@@ -4,17 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CHOAM AMBITION</title>
-<link rel="stylesheet" href="style.css?v=r11">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Roboto:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="style.css?v=r12">
 </head>
 <body>
 <header class="top">
-  <div class="brand">AMBITION</div>
-  <div class="chips">
-    <span class="chip" id="chip-mode" hidden></span>
-    <span class="chip" id="chip-src"></span>
-    <span class="chip" id="chip-mic">마이크 꺼짐</span>
-    <span class="chip">캡처 <b id="cap-count">0</b></span>
+  <div class="top-left"><span class="burger"></span><span class="logo"><i class="logo-mark"></i>AMBITION</span></div>
+  <div class="top-center">
+    <div class="chips">
+      <span class="chip" id="chip-mode" hidden></span>
+      <span class="chip" id="chip-src"></span>
+      <span class="chip" id="chip-mic">마이크 꺼짐</span>
+      <span class="chip">캡처 <b id="cap-count">0</b></span>
+    </div>
   </div>
+  <div class="top-right"><span class="avatar">A</span></div>
 </header>
 
 <main>
@@ -25,27 +30,45 @@
   </section>
 
   <section id="screen-home" class="home" hidden>
-    <h1>무엇을 볼까요?</h1>
-    <p class="muted">보고 싶은 영상을 1.5초 동안 쳐다보면 재생돼요.</p>
+    <div class="chipbar"><span class="fchip active">전체</span><span class="hint">보고 싶은 영상을 1.5초 동안 쳐다보면 재생돼요</span></div>
     <div id="video-list" class="video-grid"><p class="muted">불러오는 중…</p></div>
   </section>
 
   <section id="screen-watch" class="watch" hidden>
-    <div class="stage">
-      <div id="player" class="player"></div>
-      <div class="watch-actions">
-        <button class="btn big" id="btn-home">홈으로</button>
-        <button class="btn big" id="btn-done">다 봤어</button>
+    <div class="primary">
+      <div class="player-wrap">
+        <div id="player" class="player"></div>
+        <div id="bubble-slot"></div>
+        <div id="caption"><span id="caption-text">🎙 …</span><input id="caption-input" type="text" placeholder="말 대신 입력하고 Enter" autocomplete="off" hidden></div>
       </div>
-      <div id="bubble-slot"></div>
+      <h1 id="watch-title" class="watch-title"></h1>
+      <div class="owner-row">
+        <span class="avatar big">AI</span>
+        <div class="owner-meta"><strong>AMBITION 에이전트</strong><span id="watch-sub" class="muted"></span></div>
+        <div class="watch-actions">
+          <button class="btn big" id="btn-home">홈으로</button>
+          <button class="btn big" id="btn-done">다 봤어</button>
+        </div>
+      </div>
+      <div class="chapters">
+        <div class="chapters-h">눈여겨본 장면 <span class="count" id="chap-count">0</span></div>
+        <p id="captures-empty" class="muted">영상을 보다가 한 곳을 오래 보면 여기에 쌓여요.</p>
+        <ol id="captures" class="captures strip"></ol>
+      </div>
     </div>
-    <aside class="panel">
-      <h2>눈여겨본 장면</h2>
-      <p id="captures-empty" class="muted">영상을 보다가 한 곳을 오래 보면 여기에 쌓여요.</p>
-      <ol id="captures" class="captures"></ol>
-      <h2 class="wish-h">관심 목록</h2>
-      <p id="wish-empty" class="muted">물어볼 때 고개를 끄덕이면 여기에 담겨요.</p>
-      <ol id="wish" class="captures"></ol>
+    <aside class="secondary">
+      <section id="wishbox" class="wishbox collapsed">
+        <button class="wish-head" id="wish-head"><span>관심 목록</span><b id="wish-count">0</b><i class="chev"></i></button>
+        <div class="wish-body">
+          <p id="wish-empty" class="muted">물어볼 때 고개를 끄덕이면 여기에 담겨요.</p>
+          <ol id="wish" class="captures"></ol>
+        </div>
+      </section>
+      <section class="livechat">
+        <header class="lc-head">실시간 채팅 <span>에이전트와의 대화</span></header>
+        <div id="chat-feed" class="chat-feed"></div>
+        <div class="lc-foot">🎙 말하면 여기에 채팅으로 보여요</div>
+      </section>
     </aside>
   </section>
 </main>
@@ -63,10 +86,9 @@
   </div>
 </div>
 
-<div id="caption"><span id="caption-text">🎙 …</span><input id="caption-input" type="text" placeholder="말 대신 입력하고 Enter" autocomplete="off" hidden></div>
 <div id="gaze-dot"></div><div id="gesture-badge"></div>
 <div id="hud" class="hud" hidden></div>
 <div id="toasts"></div>
-<script type="module" src="js/main.js?v=r11"></script>
+<script type="module" src="js/main.js?v=r12"></script>
 </body>
 </html>

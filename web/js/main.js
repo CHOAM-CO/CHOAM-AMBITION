@@ -1,13 +1,13 @@
-import { api, MOCK, PARAMS } from './api.js?v=r11';
-import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r11';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r11';
-import { EyeTheiaSource } from './eyetheia.js?v=r11';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r11';
-import { grab } from './capture.js?v=r11';
-import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime, openChatBubble, updateChatBubble } from './ui.js?v=r11';
-import { HeadGestures } from './gesture.js?v=r11';
-import { Dwell } from './dwell.js?v=r11';
-import { Voice } from './voice.js?v=r11';
+import { api, MOCK, PARAMS } from './api.js?v=r12';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r12';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r12';
+import { EyeTheiaSource } from './eyetheia.js?v=r12';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r12';
+import { grab } from './capture.js?v=r12';
+import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime, openChatBubble, updateChatBubble, chatAdd, chatClear } from './ui.js?v=r12';
+import { HeadGestures } from './gesture.js?v=r12';
+import { Dwell } from './dwell.js?v=r12';
+import { Voice } from './voice.js?v=r12';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -95,18 +95,26 @@ function renderHome() {
   dwell.clear('home');
   list.innerHTML = '';
   if (!S.catalog.length) { list.innerHTML = '<p class="muted">등록된 영상이 없어요.</p>'; return; }
-  for (const v of S.catalog.slice(0, 9)) { // gaze cannot scroll: 3x3 is what fits
+  for (const v of S.catalog.slice(0, 8)) { // gaze cannot scroll: 2 rows (3 or 4 per row) is what fits
     const ready = v.cached !== false;
     const card = document.createElement('div');
     card.className = 'vcard' + (ready ? '' : ' pending');
+    const th = document.createElement('div'); th.className = 'vthumb';
     const img = document.createElement('img'); img.alt = '';
     const thumb = v.thumbnail || (v.youtubeId ? `https://i.ytimg.com/vi/${v.youtubeId}/hqdefault.jpg` : null);
     if (thumb) img.src = thumb; else img.classList.add('blank');
     img.onerror = () => img.classList.add('blank');
+    th.appendChild(img);
+    if (v.duration) { const d = document.createElement('span'); d.className = 'vdur'; d.textContent = fmtTime(v.duration); th.appendChild(d); }
+    if (!ready) { const b = document.createElement('span'); b.className = 'vbadge'; b.textContent = '준비 중'; th.appendChild(b); }
+    const info = document.createElement('div'); info.className = 'vinfo';
+    const av = document.createElement('span'); av.className = 'avatar'; av.textContent = (v.title || 'A').trim().charAt(0).toUpperCase();
+    const tx = document.createElement('div'); tx.className = 'vtxt';
     const t = document.createElement('div'); t.className = 'vtitle'; t.textContent = v.title;
-    card.append(img, t);
-    if (v.duration) { const d = document.createElement('span'); d.className = 'vdur'; d.textContent = fmtTime(v.duration); card.appendChild(d); }
-    if (!ready) { const b = document.createElement('span'); b.className = 'vbadge'; b.textContent = '준비 중'; card.appendChild(b); }
+    const ch = document.createElement('div'); ch.className = 'vch'; ch.textContent = v.source === 'youtube' ? 'YouTube' : 'AMBITION 샘플';
+    const mt = document.createElement('div'); mt.className = 'vmeta'; mt.textContent = ready ? '재생 준비됨' : '준비 중이에요…';
+    tx.append(t, ch, mt); info.append(av, tx);
+    card.append(th, info);
     list.appendChild(card);
     dwell.register(card, () => playVideo(v), { group: 'home', enabled: () => ready });
   }
@@ -135,7 +143,9 @@ async function playVideo(v) {
   const token = S.token;
   S.video = v; S.session = null;
   S.videoUrl = v.source === 'youtube' ? `https://www.youtube.com/watch?v=${v.youtubeId}` : v.url;
-  clearCaptures();
+  clearCaptures(); chatClear();
+  $('#watch-title').textContent = v.title;
+  $('#watch-sub').textContent = v.source === 'youtube' ? 'YouTube · 시선 + 음성 + 고개 제스처로 같이 보는 중' : '샘플 영상 · 시선 + 음성 + 고개 제스처로 같이 보는 중';
   show('watch');
   const host = $('#player');
   try {
@@ -151,6 +161,16 @@ async function playVideo(v) {
   if (v.source === 'mp4') S.player.play();
 }
 
+// 관심 목록: collapsible section at the top of the right column, with a count badge; opens for a few seconds on a new item, or on dwell
+const drawer = $('#wishbox');
+let drawerTimer = null;
+function setDrawer(open, ms) {
+  clearTimeout(drawerTimer);
+  drawer.classList.toggle('collapsed', !open);
+  if (open) drawerTimer = setTimeout(() => setDrawer(false), ms);
+}
+window.addEventListener('wish-added', () => setDrawer(true, 4000));
+dwell.register($('#wish-head'), () => setDrawer(drawer.classList.contains('collapsed'), 10000), { group: 'watch' });
 dwell.register($('#btn-home'), goHome, { group: 'watch' });
 dwell.register($('#btn-done'), () => finish(), { group: 'watch' });
 dwell.register($('#btn-home2'), goHome, { group: 'summary' });
@@ -168,6 +188,7 @@ function goNext() { const n = nextVideo(); if (n) playVideo(n); else goHome(); }
 // ---------- gaze loop ----------
 const detector = new GazeEventDetector(onGazeEvent);
 const dot = $('#gaze-dot');
+const actionsEl = $('.watch-actions');
 
 function startTick() {
   if (S.tick) return;
@@ -200,6 +221,8 @@ function tick() {
   if (p && S.state === 'watch' && !S.finished && p.isPlaying()) {
     const r = p.contentRect();
     inside = sm.x >= r.left && sm.x <= r.left + r.width && sm.y >= r.top && sm.y <= r.top + r.height;
+    const ar = actionsEl.getBoundingClientRect(); // looking at the dwell buttons is not looking at the video
+    if (sm.x >= ar.left - 24 && sm.x <= ar.right + 24 && sm.y >= ar.top - 24 && sm.y <= ar.bottom + 24) inside = false;
   }
   dot.classList.toggle('active', inside);
   if (inside) detector.push(now, sm.x, sm.y); else detector.reset();
@@ -264,6 +287,7 @@ function feedback(answer) {
 }
 function openDialog(card, res) {
   const d = { card, res, alt: -1, asking: true };
+  d.chat = res.say ? chatAdd({ who: 'agent', text: res.say }) : null;
   const ok = showBubble({ say: res.say, onYes: () => answerYes(d), onNo: () => answerNo(d) });
   if (ok) dlg = d;
 }
@@ -271,10 +295,12 @@ function answerYes(d) {
   if (d !== dlg || !d.asking) return;
   d.asking = false;
   feedback('yes');
+  chatAdd({ who: 'user', text: '끄덕 ✓ 응!' });
   const it = curItem();
   const isText = it.category === 'text';
   bubbleSay(isText && it.description ? it.description : '더 알아볼게요'); // text: show the translation/explanation
   bubbleLinks(it.links);
+  chatAdd({ who: 'agent', text: isText && it.description ? it.description : '더 알아볼게요', links: it.links });
   d.card.showLinks(it.links || []);
   addWish({ id: d.res.captureId + ':' + d.alt, thumb: d.res.__thumb, label: it.label, category: it.category, links: it.links });
   setTimeout(() => { if (dlg === d) dismissBubble(); }, isText ? 20000 : 12000); // nothing is clickable: close on its own
@@ -282,14 +308,17 @@ function answerYes(d) {
 function answerNo(d) {
   if (d !== dlg || !d.asking) return;
   feedback('no');
+  chatAdd({ who: 'user', text: '도리도리 ✗ 아니' });
   const alts = d.res.alternatives || [];
   if (d.alt + 1 < alts.length) {
     d.alt++;
     bubbleSay(alts[d.alt].say); // links appear only after a yes
+    chatAdd({ who: 'agent', text: alts[d.alt].say });
   } else {
     d.asking = false;
     bubbleLock();
     bubbleSay('알겠어요, 방해 안 할게요');
+    chatAdd({ who: 'agent', text: '알겠어요, 방해 안 할게요' });
     setTimeout(() => { if (dlg === d) dismissBubble(); }, 2000);
   }
 }
@@ -363,6 +392,8 @@ async function handleUtterance(raw, source) {
   duck(true);
   dlg = null;
   const bubble = openChatBubble('찾아보는 중…'); // immediately
+  chatAdd({ who: 'user', text });
+  const line = chatAdd({ who: 'agent', text: '찾아보는 중…' });
   try {
     if (!S.session) {
       const r = await api.session({ videoUrl: S.videoUrl, videoTitle: v.title, source: v.source, youtubeId: v.youtubeId });
@@ -375,14 +406,15 @@ async function handleUtterance(raw, source) {
     if (v.source === 'youtube') body.youtubeId = v.youtubeId;
     const res = await api.chat(body);
     if (token !== S.token || seq !== chatSeq) return;
-    if (res.ignored) { dismissBubble(); return; } // not for the agent: show nothing
+    if (res.ignored) { dismissBubble(); line.remove(); return; } // not for the agent: show nothing
     updateChatBubble(bubble, { text: res.reply || '', items: res.items });
+    line.setText(res.reply || ''); line.setItems(res.items);
     for (const it of res.items || []) {
       addWish({ id: (res.captureId || 'chat' + seq) + ':' + it.name, label: it.price ? `${it.name} · ${it.price}` : it.name, category: 'product', links: [{ title: it.source || '', url: it.url }] });
     }
     if (res.speak && res.reply) await voice.speak(res.reply);
   } catch (e) {
-    if (token === S.token && seq === chatSeq) { dismissBubble(); toast('대화 오류: ' + e.message); }
+    if (token === S.token && seq === chatSeq) { dismissBubble(); line.setText('(대화 오류)'); toast('대화 오류: ' + e.message); }
   } finally {
     chatBusy--;
     scheduleUnduck(chatBusy ? 4000 : 400);

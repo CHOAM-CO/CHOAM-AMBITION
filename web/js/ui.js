@@ -1,5 +1,5 @@
 // DOM helpers: toasts, capture panel, agent bubble, summary.
-import { CONFIG } from './events.js?v=r11';
+import { CONFIG } from './events.js?v=r12';
 
 const $ = (s) => document.querySelector(s);
 export const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -27,10 +27,54 @@ export const CATEGORY_KO = { product: '상품', place: '장소', food: '음식',
 const catTag = (c) => (c ? CATEGORY_KO[c] || c : '');
 
 let capCount = 0;
+const setCount = () => { $('#cap-count').textContent = capCount; $('#chap-count').textContent = capCount; };
 export function clearCaptures() {
-  capCount = 0; $('#cap-count').textContent = 0;
+  capCount = 0; setCount();
   $('#captures').innerHTML = ''; $('#captures-empty').hidden = false;
 }
+
+// ---- live-chat feed (right column): agent lines, the viewer's lines, capture events, item cards ----
+const feed = () => $('#chat-feed');
+export function chatClear() { feed().innerHTML = ''; }
+function chatPush(el) {
+  const f = feed(); f.appendChild(el);
+  while (f.children.length > 200) f.firstChild.remove();
+  f.scrollTop = f.scrollHeight;
+  return el;
+}
+function msgShell(cls, avatar, who) {
+  const m = document.createElement('div'); m.className = 'msg ' + cls;
+  const av = document.createElement('span'); av.className = 'av'; av.textContent = avatar;
+  const mb = document.createElement('div'); mb.className = 'mb';
+  const w = document.createElement('span'); w.className = 'who'; w.textContent = who;
+  mb.appendChild(w); m.append(av, mb);
+  return { m, mb };
+}
+/** who: 'agent' | 'user'. returns {setText, setItems, remove} */
+export function chatAdd({ who, text, items, links }) {
+  const { m, mb } = who === 'agent' ? msgShell('agent', 'AI', '에이전트') : msgShell('user', '나', '나');
+  const t = document.createElement('span'); t.className = 'txt'; t.textContent = text || ''; mb.appendChild(t);
+  const api = {
+    setText(x) { t.textContent = x; feed().scrollTop = feed().scrollHeight; },
+    setItems(its) {
+      mb.querySelectorAll('.item, .lk').forEach((n) => n.remove());
+      for (const it of its || []) {
+        const c = document.createElement('div'); c.className = 'item';
+        const n = document.createElement('strong'); n.textContent = it.name || ''; c.appendChild(n);
+        if (it.price) { const p = document.createElement('span'); p.className = 'price'; p.textContent = it.price; c.appendChild(p); }
+        const u = document.createElement('span'); u.className = 'plain-link'; u.textContent = `${it.source ? it.source + ' · ' : ''}${shortUrl(it.url)}`; c.appendChild(u);
+        mb.appendChild(c);
+      }
+      feed().scrollTop = feed().scrollHeight;
+    },
+    remove() { m.remove(); },
+  };
+  if (items) api.setItems(items);
+  if (links && links.length) api.setItems(links.map((l) => ({ name: l.title || '', url: l.url })));
+  chatPush(m);
+  return api;
+}
+
 export function addCapture({ thumb, videoTime, kind }) {
   $('#captures-empty').hidden = true;
   const li = document.createElement('li');
@@ -42,18 +86,27 @@ export function addCapture({ thumb, videoTime, kind }) {
   li.querySelector('.time').textContent = fmtTime(videoTime);
   li.querySelector('.kind').textContent = kind === 'fixation' ? '응시' : '시선 이동';
   $('#captures').prepend(li);
-  $('#cap-count').textContent = ++capCount;
+  $('#captures').scrollTo({ left: 0, behavior: 'smooth' }); // newest first: keep it in view
+  capCount++; setCount();
+  // the same event as a live-chat message with its thumbnail
+  const { m, mb } = msgShell('cap-msg', '📷', `장면 캡처 · ${fmtTime(videoTime)}`);
+  const mini = document.createElement('div'); mini.className = 'mini';
+  const mi = document.createElement('img'); mi.alt = ''; if (thumb) mi.src = thumb;
+  const mt = document.createElement('div'); const ml = document.createElement('strong'); ml.textContent = '분석 중…'; const mg = document.createElement('span'); mg.className = 'tag'; mg.hidden = true;
+  mt.append(ml, document.createElement('br'), mg); mini.append(mi, mt); mb.appendChild(mini);
+  chatPush(m);
   return {
     setResult(res) {
-      if (res.imageUrl && !thumb) { img.classList.remove('blank'); img.src = res.imageUrl; }
+      if (res.imageUrl && !thumb) { img.classList.remove('blank'); img.src = res.imageUrl; mi.src = res.imageUrl; }
       const lab = li.querySelector('.label');
       if (res.item) {
         lab.textContent = res.item.label; li.querySelector('.desc').textContent = res.item.description || '';
-        const t = li.querySelector('.tag'); if (res.item.category) { t.textContent = catTag(res.item.category); t.hidden = false; }
-      } else { lab.textContent = '인식된 것 없음'; li.classList.add('none'); }
+        const t = li.querySelector('.tag'); if (res.item.category) { t.textContent = catTag(res.item.category); t.hidden = false; mg.textContent = t.textContent; mg.hidden = false; }
+        ml.textContent = res.item.label;
+      } else { lab.textContent = '인식된 것 없음'; li.classList.add('none'); ml.textContent = '인식된 것 없음'; }
     },
-    setError() { li.querySelector('.label').textContent = '분석 실패'; li.classList.add('none'); },
-    remove() { li.remove(); $('#cap-count').textContent = --capCount; if (!capCount) $('#captures-empty').hidden = false; },
+    setError() { li.querySelector('.label').textContent = '분석 실패'; li.classList.add('none'); ml.textContent = '분석 실패'; },
+    remove() { li.remove(); m.remove(); capCount--; setCount(); if (!capCount) $('#captures-empty').hidden = false; },
     thumbSrc: () => img.src,
     showLinks(links) { const ex = li.querySelector('.extra'); ex.innerHTML = ''; ex.appendChild(linkList(links)); },
   };
@@ -79,6 +132,8 @@ export function addWish({ id, thumb, label, category, links }) {
   }
   li.append(img, m);
   $('#wish').prepend(li);
+  $('#wish-count').textContent = $('#wish').children.length;
+  window.dispatchEvent(new CustomEvent('wish-added'));
 }
 
 let bubbleEl = null, bubbleTimer = null, bubbleText = null;

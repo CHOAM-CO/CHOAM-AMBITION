@@ -10,8 +10,9 @@ export function parseYouTube(input) {
 }
 
 function setAspect(host, w, h) {
-  host.style.setProperty('--ar', `${w} / ${h}`);
-  host.style.setProperty('--arn', String(w / h));
+  const t = host.closest('.watch') || host; // the layout (.watch) derives the player width from these
+  t.style.setProperty('--ar', `${w} / ${h}`);
+  t.style.setProperty('--arn', String(w / h));
 }
 
 export function createMp4Player(host, url) {
