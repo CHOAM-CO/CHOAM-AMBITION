@@ -6,12 +6,13 @@
 <title>CHOAM AMBITION</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Roboto:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="style.css?v=r13">
+<link rel="stylesheet" href="style.css?v=r14">
 </head>
 <body>
 <header class="top">
   <div class="top-left"><span class="burger"></span><span class="logo"><i class="logo-mark"></i>AMBITION</span></div>
   <div class="top-center">
+    <form id="add-form" class="addbar" hidden autocomplete="off"><input id="add-input" type="text" placeholder="영상 추가 · YouTube 주소 붙여넣고 Enter" spellcheck="false"><button type="submit" id="add-btn" aria-label="영상 추가">+</button></form>
     <div class="chips">
       <span class="chip" id="chip-mode" hidden></span>
       <span class="chip" id="chip-src"></span>
@@ -89,6 +90,6 @@
 <div id="gaze-dot"></div><div id="gesture-badge"></div>
 <div id="hud" class="hud" hidden></div>
 <div id="toasts"></div>
-<script type="module" src="js/main.js?v=r13"></script>
+<script type="module" src="js/main.js?v=r14"></script>
 </body>
 </html>

@@ -1,9 +1,9 @@
 // Call mode: Silero VAD (@ricky0123/vad-web) + backend ASR for the viewer's speech, and a gapless
 // TTS player for the agent's streamed sentences (with speechSynthesis as the per-sentence fallback).
-import { CONFIG } from './events.js?v=r13';
-import { api } from './api.js?v=r13';
-import { loadOrt, loadScript, ORT_BASE } from './ort.js?v=r13';
-import { Voice } from './voice.js?v=r13';
+import { CONFIG } from './events.js?v=r14';
+import { api } from './api.js?v=r14';
+import { loadOrt, loadScript, ORT_BASE } from './ort.js?v=r14';
+import { Voice } from './voice.js?v=r14';
 
 const VAD_VER = '0.0.29';
 const VAD_BASE = `https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@${VAD_VER}/dist/`;

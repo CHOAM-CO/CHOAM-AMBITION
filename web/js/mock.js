@@ -61,6 +61,11 @@ export async function mockApi(method, path, body) {
     ] };
   }
 
+  if (path === '/api/youtube/add') {
+    await sleep(200);
+    return { ok: true, existing: false, video: { id: 'mock-add', title: '추가한 영상 (mock)', source: 'youtube', youtubeId: 'jNQXAC9IVRw', cached: false } };
+  }
+
   if (path === '/api/session') {
     await sleep(100);
     return { sessionId: 'mock-' + Math.random().toString(36).slice(2, 8) };

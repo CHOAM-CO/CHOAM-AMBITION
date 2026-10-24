@@ -187,6 +187,7 @@ async function route(req, res, url) {
     const r = yt.prefetch((await readJson(req)).videoId);
     return send(res, r.ok ? 200 : 400, r);
   }
+  if (method === 'POST' && p === '/api/youtube/add') return send(res, 200, await yt.addVideo((await readJson(req)).url));
   let ym;
   if (method === 'GET' && (ym = p.match(/^\/api\/youtube\/status\/([^/]+)$/))) return send(res, 200, yt.statusOf(ym[1]));
   if (method === 'POST' && p === '/api/asr') return send(res, 200, await handleAsr(req, url));

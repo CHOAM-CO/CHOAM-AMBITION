@@ -25,7 +25,14 @@ img.blank { background:#333 !important; }
 .logo { display:flex; align-items:center; gap:4px; font-size:20px; font-weight:700; letter-spacing:-.5px; }
 .logo-mark { width:28px; height:20px; border-radius:6px; background:var(--red); position:relative; }
 .logo-mark::after { content:""; position:absolute; left:11px; top:5px; border-left:8px solid #fff; border-top:5px solid transparent; border-bottom:5px solid transparent; }
-.top-center { display:flex; justify-content:center; }
+.top-center { display:flex; justify-content:center; gap:12px; }
+.addbar { display:flex; align-items:center; height:40px; width:min(460px,40vw); border:1px solid var(--line); border-radius:40px; background:#121212; overflow:hidden; }
+.addbar:focus-within { border-color:#3ea6ff; }
+.addbar input { flex:1; min-width:0; height:100%; padding:0 16px; background:transparent; border:0; outline:0; color:var(--text); font:inherit; font-size:14px; }
+.addbar input::placeholder { color:var(--muted); }
+.addbar button { width:52px; height:100%; border:0; border-left:1px solid var(--line); background:#222; color:var(--text); font-size:20px; cursor:pointer; }
+.addbar.busy button { opacity:.5; }
+.vbadge.err { background:#7a2222; }
 .chips { display:flex; align-items:center; gap:14px; min-width:320px; max-width:640px; height:40px; padding:0 18px; border:1px solid var(--line); border-radius:40px; background:#121212; }
 .chip { font-size:13px; color:var(--muted); white-space:nowrap; }
 .chip:empty { display:none; }

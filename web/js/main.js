@@ -1,14 +1,14 @@
-import { api, MOCK, PARAMS } from './api.js?v=r13';
-import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r13';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r13';
-import { EyeTheiaSource } from './eyetheia.js?v=r13';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r13';
-import { grab } from './capture.js?v=r13';
-import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime, openChatBubble, updateChatBubble, chatAdd, chatClear } from './ui.js?v=r13';
-import { HeadGestures } from './gesture.js?v=r13';
-import { Dwell } from './dwell.js?v=r13';
-import { Voice } from './voice.js?v=r13';
-import { VadMic, AgentVoice, classifyAnswer } from './call.js?v=r13';
+import { api, MOCK, PARAMS } from './api.js?v=r14';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r14';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r14';
+import { EyeTheiaSource } from './eyetheia.js?v=r14';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r14';
+import { grab } from './capture.js?v=r14';
+import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime, openChatBubble, updateChatBubble, chatAdd, chatClear } from './ui.js?v=r14';
+import { HeadGestures } from './gesture.js?v=r14';
+import { Dwell } from './dwell.js?v=r14';
+import { Voice } from './voice.js?v=r14';
+import { VadMic, AgentVoice, classifyAnswer } from './call.js?v=r14';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -25,6 +25,7 @@ function show(state) {
   S.state = state;
   $('#screen-landing').hidden = state !== 'landing';
   $('#screen-home').hidden = state !== 'home';
+  $('#add-form').hidden = state !== 'home';
   $('#screen-watch').hidden = !(state === 'watch' || state === 'summary');
   $('#summary').hidden = state !== 'summary';
   dwell.setGroup(state);
@@ -91,6 +92,26 @@ async function loadCatalog() {
   }
 }
 
+// "영상 추가": paste any YouTube URL + Enter. Card shows at once (준비 중); playable via the embed immediately, gaze captures once cached.
+(() => {
+  const form = $('#add-form'), input = $('#add-input');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = input.value.trim();
+    if (!url || form.classList.contains('busy')) return;
+    form.classList.add('busy');
+    try {
+      const r = await api.addVideo(url);
+      input.value = ''; input.blur();
+      toast(r.existing ? '이미 있는 영상이에요' : '영상을 추가했어요. 준비 중이에요');
+      await loadCatalog();
+    } catch (err) {
+      toast('영상 추가 실패: ' + (err.body?.error || err.message));
+    } finally { form.classList.remove('busy'); }
+  });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Escape') input.blur(); });
+})();
+
 function renderHome() {
   const list = $('#video-list');
   dwell.clear('home');
@@ -107,13 +128,14 @@ function renderHome() {
     img.onerror = () => img.classList.add('blank');
     th.appendChild(img);
     if (v.duration) { const d = document.createElement('span'); d.className = 'vdur'; d.textContent = fmtTime(v.duration); th.appendChild(d); }
-    if (!ready) { const b = document.createElement('span'); b.className = 'vbadge'; b.textContent = '준비 중'; th.appendChild(b); }
+    const failed = !ready && v.state === 'error';
+    if (!ready) { const b = document.createElement('span'); b.className = 'vbadge' + (failed ? ' err' : ''); b.textContent = failed ? '다운로드 실패' : '준비 중'; th.appendChild(b); }
     const info = document.createElement('div'); info.className = 'vinfo';
     const av = document.createElement('span'); av.className = 'avatar'; av.textContent = (v.title || 'A').trim().charAt(0).toUpperCase();
     const tx = document.createElement('div'); tx.className = 'vtxt';
     const t = document.createElement('div'); t.className = 'vtitle'; t.textContent = v.title;
     const ch = document.createElement('div'); ch.className = 'vch'; ch.textContent = v.source === 'youtube' ? 'YouTube' : 'AMBITION 샘플';
-    const mt = document.createElement('div'); mt.className = 'vmeta'; mt.textContent = ready ? '재생 준비됨' : '준비 중이에요…';
+    const mt = document.createElement('div'); mt.className = 'vmeta'; mt.textContent = ready ? '재생 준비됨' : failed ? '5분 뒤 다시 시도해요' : '준비 중이에요…';
     tx.append(t, ch, mt); info.append(av, tx);
     card.append(th, info);
     list.appendChild(card);

@@ -69,6 +69,7 @@ function addToCatalog(entry) {
 }
 
 // ---- download queue (never blocks requests) -------------------------------------------------
+export const MAX_DURATION_S = 30 * 60; // refuse longer videos (disk)
 const queue = []; let active = 0; const MAX_ACTIVE = 2; const RETRY_MS = 5 * 60 * 1000;
 
 function enqueue(id, { addAfter = false } = {}) {
@@ -93,7 +94,7 @@ async function download({ id, addAfter }) {
     if (!isCached(id)) {
       const t0 = Date.now();
       await run(tool('yt-dlp'), [
-        '--no-playlist', '--no-progress', '--newline', '--no-warnings',
+        '--no-playlist', '--no-progress', '--newline', '--no-warnings', '--match-filter', `duration<=?${MAX_DURATION_S}`,
         '--js-runtimes', `node:${process.execPath}`, '--ffmpeg-location', config.binDir, '--cache-dir', config.ytCacheDir,
         // <=720p, video-only, h264 preferred (fast ffmpeg seeks)
         '-f', 'bv*[height<=720][vcodec^=avc1][ext=mp4]/bv*[height<=720][ext=mp4]/b[height<=720][ext=mp4]/b[height<=720]',
@@ -126,6 +127,48 @@ export function prefetch(id) {
   enqueue(id, { addAfter: !inCatalog });
   return { ok: true, videoId: id, cached: isCached(id), queued: true };
 }
+// Any YouTube URL form (watch?v=, youtu.be/, shorts/, embed/, live/) or a raw 11-char id.
+export function parseYtInput(input) {
+  const s = String(input || '').trim();
+  let m = s.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/);
+  if (!m && /^[\w-]{11}$/.test(s)) m = [s, s];
+  return m ? m[1] : null;
+}
+const httpErr = (status, msg) => Object.assign(new Error(msg), { status });
+
+async function fetchMeta(id) {
+  try {
+    const [title, channel, dur] = (await run(tool('yt-dlp'), ['--no-playlist', '--skip-download', '--no-warnings', '--js-runtimes', `node:${process.execPath}`, '--cache-dir', config.ytCacheDir,
+      '--print', '%(title)s\n%(channel)s\n%(duration)s', `https://www.youtube.com/watch?v=${id}`], { timeoutMs: 45000 })).split(/\r?\n/);
+    return { title, channel, duration: Number(dur) || undefined };
+  } catch (e) {
+    log('metadata failed', id, e.message);
+    try { // oEmbed fallback: title/author only (duration then enforced by --match-filter at download)
+      const r = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent('https://www.youtube.com/watch?v=' + id)}`, { signal: AbortSignal.timeout(10000) });
+      if (r.ok) { const j = await r.json(); return { title: j.title, channel: j.author_name }; }
+    } catch { /* ignore */ }
+    return {};
+  }
+}
+
+// Add a video by URL: persists to the catalog right away, starts the download, returns the card (cached:false until done).
+export async function addVideo(input) {
+  const id = parseYtInput(input);
+  if (!id) throw httpErr(400, 'not a YouTube URL or id');
+  let existing = catalog.find((e) => e.id === id);
+  const existed = !!existing;
+  if (!existing) {
+    const meta = await fetchMeta(id);
+    if (meta.duration && meta.duration > MAX_DURATION_S) throw httpErr(422, `video too long (${Math.round(meta.duration / 60)} min, max ${MAX_DURATION_S / 60})`);
+    existing = { id, title: meta.title || id, ...(meta.channel ? { channel: meta.channel } : {}), ...(meta.duration ? { duration: meta.duration } : {}), addedAt: Date.now() };
+    await addToCatalog(existing);
+    if (meta.duration) durations.set(id, meta.duration);
+    log('added', id, existing.title);
+  }
+  if (!isCached(id)) enqueue(id, { addAfter: false });
+  return { ok: true, existing: existed, video: (await listYoutube()).find((v) => v.id === id) };
+}
+
 export const statusOf = (id) => ({ videoId: id, cached: isCached(id), ...(state.get(id) || { state: isCached(id) ? 'cached' : 'unknown' }) });
 
 export async function initYoutube() {
@@ -148,7 +191,8 @@ const getInfo = (id) => getInfoFile(cachedPath(id));
 
 export async function listYoutube() {
   const out = [];
-  for (const e of catalog) {
+  const ordered = [...catalog].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0)); // user-added first, newest first
+  for (const e of ordered) {
     const cached = isCached(e.id);
     let duration = durations.get(e.id) ?? null;
     if (duration == null && cached) { try { duration = (await getInfo(e.id)).duration; } catch { /* ignore */ } }
@@ -156,6 +200,7 @@ export async function listYoutube() {
       id: e.id, title: e.title, ...(e.channel ? { channel: e.channel } : {}), source: 'youtube', youtubeId: e.id,
       url: `https://www.youtube.com/watch?v=${e.id}`, thumbnail: `https://i.ytimg.com/vi/${e.id}/hqdefault.jpg`,
       cached, duration: duration != null ? Math.round(duration) : null,
+      ...(!cached && state.get(e.id)?.state ? { state: state.get(e.id).state, ...(state.get(e.id).error ? { error: state.get(e.id).error } : {}) } : {}),
     });
   }
   return out;
