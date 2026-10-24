@@ -1,10 +1,10 @@
-import { api, MOCK, PARAMS } from './api.js?v=r5';
-import { CONFIG, GazeEventDetector } from './events.js?v=r5';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r5';
-import { createMp4Player, createYouTubePlayer, parseYouTube } from './player.js?v=r5';
-import { grab, startDisplayCapture, hasDisplayCapture } from './capture.js?v=r5';
-import { toast, addCapture, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary } from './ui.js?v=r5';
-import { HeadGestures } from './gesture.js?v=r5';
+import { api, MOCK, PARAMS } from './api.js?v=r6';
+import { CONFIG, GazeEventDetector } from './events.js?v=r6';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r6';
+import { createMp4Player, createYouTubePlayer, parseYouTube } from './player.js?v=r6';
+import { grab, startDisplayCapture, hasDisplayCapture } from './capture.js?v=r6';
+import { toast, addCapture, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary } from './ui.js?v=r6';
+import { HeadGestures } from './gesture.js?v=r6';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -117,7 +117,11 @@ function tick() {
   const nowG = performance.now();
   gest.setListening(!!dlg && dlg.asking && bubbleActive(), nowG);
   gest.update(nowG);
-  const raw = S.source && S.source.latest();
+  let raw = S.source && S.source.latest();
+  const K = CONFIG.correction;
+  if (raw && K.active && S.source.mode !== 'mouse') {
+    raw = { x: Math.max(0, Math.min(innerWidth, K.a * raw.x + K.b)), y: Math.max(0, Math.min(innerHeight, K.c * raw.y + K.d)), t: raw.t };
+  }
   const now = performance.now();
   if (!raw) { sm = null; win = []; dot.style.opacity = 0; detector.reset(); return; }
   const mouse = S.source.mode === 'mouse';
@@ -138,7 +142,7 @@ function tick() {
   dot.classList.toggle('active', inside);
   if (inside) detector.push(now, sm.x, sm.y); else detector.reset();
   dot.style.setProperty('--p', (inside ? detector.fixProgress : 0) * 360 + 'deg');
-  if (DEBUG) $('#hud').textContent = `gaze ${sm.x | 0},${sm.y | 0} inside=${inside} fix=${detector.fixProgress.toFixed(2)} sac=${detector.sacState}`;
+  if (DEBUG) $('#hud').textContent = `gaze ${sm.x | 0},${sm.y | 0} inside=${inside} fix=${detector.fixProgress.toFixed(2)} sac=${detector.sacState} a=${K.a.toFixed(2)} b=${K.b | 0} c=${K.c.toFixed(2)} d=${K.d | 0}${K.active ? '' : ' (off)'}`;
 }
 
 // ---------- capture ----------

@@ -1,4 +1,4 @@
-import { CONFIG } from './events.js?v=r5';
+import { CONFIG } from './events.js?v=r6';
 // Gaze sources: WebGazer (webcam) or mouse. Exposes latest raw point in client px.
 const WEBGAZER_SRC = 'https://cdn.jsdelivr.net/npm/webgazer@3.4.0/dist/webgazer.min.js';
 
@@ -54,13 +54,28 @@ export class WebGazerSource {
   }
 }
 
+const med = (a) => { const s = [...a].sort((m, n) => m - n); return s[s.length >> 1]; };
+
+/** least-squares v' = k*v + o mapping measured -> target; k clamped, offset-only when < 3 points */
+export function fitAxis(meas, tgt) {
+  const n = meas.length, mm = meas.reduce((a, b) => a + b, 0) / n, mt = tgt.reduce((a, b) => a + b, 0) / n;
+  let k = 1;
+  if (n >= 3) {
+    let sxy = 0, sxx = 0;
+    for (let i = 0; i < n; i++) { sxy += (meas[i] - mm) * (tgt[i] - mt); sxx += (meas[i] - mm) ** 2; }
+    if (sxx > 0) k = Math.max(CONFIG.correction.minScale, Math.min(CONFIG.correction.maxScale, sxy / sxx));
+  }
+  return { k, o: mt - k * mm };
+}
+
 /** Runs the 9-point calibration + accuracy check. Resolves when the user accepts. */
 export async function runCalibration(root, source, getGaze, clickMode = false) {
   const CLICKS = 3;
   const clickPts = [[12, 14], [88, 14], [50, 50], [12, 86], [88, 86]]; // 4 corners inset + center
-  const autoPts = [];
-  for (const y of [14, 50, 86]) for (const x of [12, 50, 88]) autoPts.push([x, y]); // 3x3 inset grid
+  const autoPts = []; // 3x3 grid, snake order (L->R, R->L, L->R); bottom row less extreme
+  [15, 50, 80].forEach((y, i) => { const xs = [12, 50, 88]; (i % 2 ? xs.reverse() : xs).forEach((x) => autoPts.push([x, y])); });
   for (;;) {
+    Object.assign(CONFIG.correction, { active: false, a: 1, b: 0, c: 1, d: 0 });
     source.clear && source.clear();
     root.hidden = false;
     const field = (root.innerHTML = clickMode
@@ -103,32 +118,40 @@ export async function runCalibration(root, source, getGaze, clickMode = false) {
     source.freeze && source.freeze();
 
     // accuracy check
-    root.innerHTML = '<p class="calib-msg">정확도 확인 중이에요. 나타나는 점을 계속 봐 주세요</p><div class="calib-field"></div><button class="btn calib-skip">건너뛰기</button>';
+    root.innerHTML = '<p class="calib-msg">정확도 확인 중이에요. 나타나는 점을 계속 봐 주세요</p><div class="calib-field"></div><button class="btn calib-skip">건너뛰기 (보정 덜 정확)</button>';
     let skipped = false;
     root.querySelector('.calib-skip').onclick = () => { skipped = true; };
     const f2 = root.querySelector('.calib-field');
-    const checks = [[50, 50], [25, 30], [75, 70]];
-    const errs = [];
+    const checks = [[50, 50], [25, 25], [75, 25], [25, 75], [75, 75]];
+    const meas = []; // {tx, ty, mx, my}: target and median predicted point
     for (const [px, py] of checks) {
       if (skipped) break;
       const d = document.createElement('div');
       d.className = 'calib-pt check'; d.style.left = px + '%'; d.style.top = py + '%'; f2.appendChild(d);
       const tx = innerWidth * px / 100, ty = innerHeight * py / 100;
-      const ds = [];
+      const xs = [], ys = [];
       const t0 = performance.now();
       while (!skipped && performance.now() - t0 < 1800) {
         await new Promise((r) => setTimeout(r, 33));
         const g = getGaze();
-        if (g && performance.now() - t0 > 700) ds.push(Math.hypot(g.x - tx, g.y - ty));
+        if (g && performance.now() - t0 > 700) { xs.push(g.x); ys.push(g.y); }
       }
       d.remove();
-      if (ds.length) { ds.sort((a, b) => a - b); errs.push(ds[Math.floor(ds.length / 2)]); }
+      if (xs.length) meas.push({ tx, ty, mx: med(xs), my: med(ys) });
     }
     if (skipped) break;
-    const err = errs.length ? errs.reduce((a, b) => a + b, 0) / errs.length : NaN;
-    const score = isNaN(err) ? 0 : Math.max(0, Math.round(100 - (err / (innerHeight * 0.35)) * 100));
+    const meanErr = (f) => (meas.length ? meas.reduce((t, m) => t + Math.hypot(f(m.mx, 'x') - m.tx, f(m.my, 'y') - m.ty), 0) / meas.length : NaN);
+    const before = meanErr((v) => v);
+    let after = before, applied = false;
+    if (meas.length) {
+      const fx = fitAxis(meas.map((m) => m.mx), meas.map((m) => m.tx)), fy = fitAxis(meas.map((m) => m.my), meas.map((m) => m.ty));
+      Object.assign(CONFIG.correction, { active: true, a: fx.k, b: fx.o, c: fy.k, d: fy.o });
+      after = meanErr((v, ax) => (ax === 'x' ? fx.k * v + fx.o : fy.k * v + fy.o));
+      applied = true;
+    }
+    const score = isNaN(after) ? 0 : Math.max(0, Math.round(100 - (after / (innerHeight * 0.35)) * 100));
     const verdict = score >= 70 ? '좋아요' : score >= 45 ? '쓸 만해요' : '낮아요, 다시 보정을 추천해요';
-    root.innerHTML = `<div class="calib-result"><h2>정확도 ${score}%</h2><p>${isNaN(err) ? '얼굴이 인식되지 않았어요' : `평균 오차 약 ${Math.round(err)}px · ${verdict}`}</p>
+    root.innerHTML = `<div class="calib-result"><h2>정확도 ${score}%</h2><p>${isNaN(before) ? '얼굴이 인식되지 않았어요' : `${applied ? '보정 반영 · ' : ''}평균 오차 ${Math.round(before)}px → ${Math.round(after)}px · ${verdict}`}</p>
       <div class="row"><button class="btn" id="cal-redo">다시 보정</button><button class="btn primary" id="cal-go">이대로 시작</button></div></div>`;
     const choice = await new Promise((res) => {
       root.querySelector('#cal-redo').onclick = () => res('redo');

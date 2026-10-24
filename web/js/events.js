@@ -53,7 +53,10 @@ export const CONFIG = {
   },
 
   // eyes-only calibration (default); ?calib=click uses click calibration
-  autoCalib: { waitMs: 400, collectMs: 1000, tickMs: 50 },
+  autoCalib: { waitMs: 700, collectMs: 1000, tickMs: 50 },
+
+  // per-axis bias map from the accuracy check: x' = a*x + b, y' = c*y + d (applied to webcam gaze before smoothing)
+  correction: { active: false, a: 1, b: 0, c: 1, d: 0, minScale: 0.6, maxScale: 1.6 },
 };
 
 if (typeof window !== 'undefined') window.AMBITION_CONFIG = CONFIG; // tweak live from the console
