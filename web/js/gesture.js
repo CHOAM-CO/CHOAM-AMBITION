@@ -1,6 +1,6 @@
 // Head nod / shake from WebGazer's facemesh landmarks (no extra model).
 // pitch/yaw proxies = nose tip offset from the eye-corner midpoint, divided by inter-ocular distance.
-import { CONFIG } from './events.js?v=r6';
+import { CONFIG } from './events.js?v=r7';
 
 const xy = (q) => (q ? (Array.isArray(q) ? { x: q[0], y: q[1] } : { x: q.x, y: q.y }) : null);
 const median = (a) => { const s = [...a].sort((m, n) => m - n); return s[s.length >> 1]; };

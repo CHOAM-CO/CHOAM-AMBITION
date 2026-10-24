@@ -1,5 +1,5 @@
 // Thin API client. ?mock=1 swaps every /api call for local fake responses.
-import { mockApi } from './mock.js?v=r6';
+import { mockApi } from './mock.js?v=r7';
 
 export const PARAMS = new URLSearchParams(location.search);
 export const MOCK = PARAMS.get('mock') === '1';
@@ -15,7 +15,12 @@ async function call(method, path, body) {
       body: body ? JSON.stringify(body) : undefined,
       signal: ctl.signal,
     });
-    if (!r.ok) throw new Error(`${method} ${path} -> ${r.status}`);
+    if (!r.ok) {
+      const err = new Error(`${method} ${path} -> ${r.status}`);
+      err.status = r.status;
+      err.body = await r.json().catch(() => null);
+      throw err;
+    }
     return await r.json();
   } finally {
     clearTimeout(timer);

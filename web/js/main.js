@@ -1,59 +1,40 @@
-import { api, MOCK, PARAMS } from './api.js?v=r6';
-import { CONFIG, GazeEventDetector } from './events.js?v=r6';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r6';
-import { createMp4Player, createYouTubePlayer, parseYouTube } from './player.js?v=r6';
-import { grab, startDisplayCapture, hasDisplayCapture } from './capture.js?v=r6';
-import { toast, addCapture, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary } from './ui.js?v=r6';
-import { HeadGestures } from './gesture.js?v=r6';
+import { api, MOCK, PARAMS } from './api.js?v=r7';
+import { CONFIG, GazeEventDetector } from './events.js?v=r7';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r7';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r7';
+import { grab } from './capture.js?v=r7';
+import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime } from './ui.js?v=r7';
+import { HeadGestures } from './gesture.js?v=r7';
+import { Dwell } from './dwell.js?v=r7';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
 const DEBUG = PARAMS.get('debug') === '1';
 if (DEBUG) document.body.classList.add('debug');
 
-const S = { video: null, player: null, session: null, source: null, tick: null, finished: false, caps: 0 };
+// state: landing | setup | home | watch | summary
+const S = { state: 'landing', catalog: [], video: null, videoUrl: null, player: null, session: null, source: null, tick: null, finished: false, token: 0, nextTimer: null, homeTimer: null };
 let sm = null; // smoothed gaze {x,y}
 let win = []; // recent raw samples for the median
+const dwell = new Dwell();
 
-// ---------- picker ----------
-async function loadVideos() {
-  const list = $('#video-list');
-  try {
-    const { videos } = await api.videos();
-    list.innerHTML = '';
-    if (!videos.length) list.innerHTML = '<p class="muted">등록된 영상이 없어요. 아래에 YouTube 주소를 넣어 보세요.</p>';
-    for (const v of videos) {
-      const b = document.createElement('button');
-      b.className = 'vcard'; b.textContent = v.title;
-      b.onclick = () => start({ source: 'mp4', url: v.url, title: v.title });
-      list.appendChild(b);
-    }
-  } catch (e) {
-    list.innerHTML = '<p class="muted">영상 목록을 불러오지 못했어요.</p>';
-    toast('영상 목록 오류: ' + e.message);
-  }
+function show(state) {
+  S.state = state;
+  $('#screen-landing').hidden = state !== 'landing';
+  $('#screen-home').hidden = state !== 'home';
+  $('#screen-watch').hidden = !(state === 'watch' || state === 'summary');
+  $('#summary').hidden = state !== 'summary';
+  dwell.setGroup(state);
 }
 
-$('#yt-form').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const yt = parseYouTube($('#yt-url').value);
-  if (!yt) return toast('YouTube 주소를 확인해 주세요 (watch?v=, youtu.be, shorts)');
-  start({ source: 'youtube', yt, url: yt.url, title: 'YouTube ' + yt.id });
-});
-
-// ---------- start flow ----------
-function setup(msg) { $('#setup').hidden = !msg; $('#setup-msg').textContent = msg || ''; }
-
-async function start(video) {
-  S.video = video;
-  $('#screen-pick').hidden = true;
+// ---------- start (the only click) ----------
+$('#btn-start').onclick = async () => {
+  $('#btn-start').disabled = true;
+  S.state = 'setup';
+  $('#screen-landing').hidden = true;
   try {
-    if (video.source === 'youtube') {
-      setup('화면 공유를 허용해 주세요 (이 탭, 프레임 캡처용)');
-      try { await startDisplayCapture(); } catch (e) { toast('화면 공유 없이는 YouTube 캡처가 안 돼요'); }
-    }
     if (MOUSE) {
-      S.source = new MouseSource(); await S.source.start();
+      S.source = new MouseSource(); await S.source.start(); startTick();
     } else {
       S.source = new WebGazerSource();
       for (;;) {
@@ -64,19 +45,19 @@ async function start(video) {
         }
       }
       setup(null);
-      if (S.source.mode === 'webcam') {
-        startTick(); // gaze dot visible during calibration
-        await runCalibration($('#calib'), S.source, () => sm, PARAMS.get('calib') === 'click');
-      }
+      startTick(); // gaze dot visible during calibration
+      if (S.source.mode === 'webcam') await runCalibration($('#calib'), S.source, () => sm, PARAMS.get('calib') === 'click');
     }
   } finally { setup(null); }
-  await beginWatching();
-}
+  $('#chip-src').textContent = S.source.mode === 'mouse' ? '시선: 마우스' : '시선: 웹캠';
+  goHome();
+};
+
+function setup(msg) { $('#setup').hidden = !msg; $('#setup-msg').textContent = msg || ''; }
 
 function askFail(e) {
   return new Promise((res) => {
-    const box = $('#setup');
-    box.hidden = false;
+    $('#setup').hidden = false;
     $('#setup-msg').innerHTML = '';
     const p = document.createElement('p'); p.textContent = '카메라를 켜지 못했어요: ' + (e.message || e.name);
     const r = document.createElement('div'); r.className = 'row';
@@ -87,22 +68,96 @@ function askFail(e) {
   });
 }
 
-async function beginWatching() {
-  $('#screen-watch').hidden = false;
-  $('#btn-done').hidden = false;
-  $('#chip-src').textContent = S.source.mode === 'mouse' ? '시선: 마우스' : '시선: 웹캠';
+// ---------- home ----------
+const normalize = (v) => ({ ...v, source: v.source || (v.youtubeId ? 'youtube' : 'mp4') });
+let catalogKey = '';
+
+async function loadCatalog() {
+  try {
+    const { videos } = await api.videos();
+    S.catalog = videos.map(normalize);
+    const key = JSON.stringify(S.catalog);
+    if (key !== catalogKey) { catalogKey = key; renderHome(); }
+  } catch (e) {
+    if (!S.catalog.length) $('#video-list').innerHTML = '<p class="muted">영상 목록을 불러오지 못했어요.</p>';
+    toast('영상 목록 오류: ' + e.message);
+  }
+}
+
+function renderHome() {
+  const list = $('#video-list');
+  dwell.clear('home');
+  list.innerHTML = '';
+  if (!S.catalog.length) { list.innerHTML = '<p class="muted">등록된 영상이 없어요.</p>'; return; }
+  for (const v of S.catalog.slice(0, 9)) { // gaze cannot scroll: 3x3 is what fits
+    const ready = v.cached !== false;
+    const card = document.createElement('div');
+    card.className = 'vcard' + (ready ? '' : ' pending');
+    const img = document.createElement('img'); img.alt = '';
+    const thumb = v.thumbnail || (v.youtubeId ? `https://i.ytimg.com/vi/${v.youtubeId}/hqdefault.jpg` : null);
+    if (thumb) img.src = thumb; else img.classList.add('blank');
+    img.onerror = () => img.classList.add('blank');
+    const t = document.createElement('div'); t.className = 'vtitle'; t.textContent = v.title;
+    card.append(img, t);
+    if (v.duration) { const d = document.createElement('span'); d.className = 'vdur'; d.textContent = fmtTime(v.duration); card.appendChild(d); }
+    if (!ready) { const b = document.createElement('span'); b.className = 'vbadge'; b.textContent = '준비 중'; card.appendChild(b); }
+    list.appendChild(card);
+    dwell.register(card, () => playVideo(v), { group: 'home', enabled: () => ready });
+  }
+}
+
+function goHome() {
+  teardown();
+  show('home');
+  loadCatalog();
+  clearInterval(S.homeTimer);
+  S.homeTimer = setInterval(() => { if (S.state === 'home') loadCatalog(); }, 10000); // pick up cached=false -> true
+}
+
+// ---------- watch ----------
+function teardown() {
+  S.token++;
+  clearInterval(S.nextTimer);
+  dismissBubble(); dlg = null;
+  if (S.player) { try { S.player.destroy(); } catch {} S.player = null; }
+  S.finished = false;
+}
+
+async function playVideo(v) {
+  teardown();
+  clearInterval(S.homeTimer);
+  const token = S.token;
+  S.video = v; S.session = null;
+  S.videoUrl = v.source === 'youtube' ? `https://www.youtube.com/watch?v=${v.youtubeId}` : v.url;
+  clearCaptures();
+  show('watch');
   const host = $('#player');
   try {
-    S.player = S.video.source === 'mp4' ? createMp4Player(host, S.video.url) : await createYouTubePlayer(host, S.video.yt);
+    const p = v.source === 'mp4' ? createMp4Player(host, v.url) : await createYouTubePlayer(host, { id: v.youtubeId });
+    if (token !== S.token) { p.destroy(); return; }
+    S.player = p;
   } catch (e) { toast('플레이어 오류: ' + e.message); return; }
   S.player.onEnded(finish);
   try {
-    const r = await api.session({ videoUrl: S.video.url, videoTitle: S.player.title || S.video.title, source: S.video.source });
-    S.session = r.sessionId;
+    const r = await api.session({ videoUrl: S.videoUrl, videoTitle: v.title, source: v.source, youtubeId: v.youtubeId });
+    if (token === S.token) S.session = r.sessionId;
   } catch (e) { toast('세션 생성 실패 (캡처 때 다시 시도해요): ' + e.message); }
-  startTick();
-  S.player.play();
+  if (v.source === 'mp4') S.player.play();
 }
+
+dwell.register($('#btn-home'), goHome, { group: 'watch' });
+dwell.register($('#btn-done'), () => finish(), { group: 'watch' });
+dwell.register($('#btn-home2'), goHome, { group: 'summary' });
+dwell.register($('#btn-next'), () => goNext(), { group: 'summary' });
+
+function nextVideo() {
+  const list = S.catalog.filter((v) => v.cached !== false);
+  if (!list.length || !S.video) return null;
+  const i = list.findIndex((v) => v.id === S.video.id);
+  const n = list[(i + 1) % list.length];
+  return n.id === S.video.id ? null : n;
+}
+function goNext() { const n = nextVideo(); if (n) playVideo(n); else goHome(); }
 
 // ---------- gaze loop ----------
 const detector = new GazeEventDetector(onGazeEvent);
@@ -123,7 +178,7 @@ function tick() {
     raw = { x: Math.max(0, Math.min(innerWidth, K.a * raw.x + K.b)), y: Math.max(0, Math.min(innerHeight, K.c * raw.y + K.d)), t: raw.t };
   }
   const now = performance.now();
-  if (!raw) { sm = null; win = []; dot.style.opacity = 0; detector.reset(); return; }
+  if (!raw) { sm = null; win = []; dot.style.opacity = 0; detector.reset(); dwell.update(null, now); return; }
   const mouse = S.source.mode === 'mouse';
   const a = mouse ? CONFIG.smoothingAlphaMouse : CONFIG.smoothingAlpha;
   win.push(raw); if (win.length > (mouse ? CONFIG.medianWindowMouse : CONFIG.medianWindow)) win.shift();
@@ -132,51 +187,66 @@ function tick() {
   sm = sm ? { x: sm.x + a * (mx - sm.x), y: sm.y + a * (my - sm.y) } : { x: mx, y: my };
   dot.style.opacity = 1;
   dot.style.transform = `translate(${sm.x}px, ${sm.y}px)`;
+  dwell.update(sm, now);
 
   const p = S.player;
   let inside = false;
-  if (p && !S.finished && p.isPlaying()) {
+  if (p && S.state === 'watch' && !S.finished && p.isPlaying()) {
     const r = p.contentRect();
     inside = sm.x >= r.left && sm.x <= r.left + r.width && sm.y >= r.top && sm.y <= r.top + r.height;
   }
   dot.classList.toggle('active', inside);
   if (inside) detector.push(now, sm.x, sm.y); else detector.reset();
   dot.style.setProperty('--p', (inside ? detector.fixProgress : 0) * 360 + 'deg');
-  if (DEBUG) $('#hud').textContent = `gaze ${sm.x | 0},${sm.y | 0} inside=${inside} fix=${detector.fixProgress.toFixed(2)} sac=${detector.sacState} a=${K.a.toFixed(2)} b=${K.b | 0} c=${K.c.toFixed(2)} d=${K.d | 0}${K.active ? '' : ' (off)'}`;
+  if (DEBUG) $('#hud').textContent = `${S.state} gaze ${sm.x | 0},${sm.y | 0} inside=${inside} fix=${detector.fixProgress.toFixed(2)} sac=${detector.sacState} a=${K.a.toFixed(2)} b=${K.b | 0} c=${K.c.toFixed(2)} d=${K.d | 0}${K.active ? '' : ' (off)'}`;
 }
 
 // ---------- capture ----------
 async function onGazeEvent(ev) {
   const p = S.player;
-  if (!p || S.finished) return;
+  if (!p || S.finished || S.state !== 'watch') return;
+  const token = S.token, v = S.video;
   const videoTime = p.time();
   let shot;
   try { shot = await grab(p, ev.x, ev.y); }
   catch (e) { toast('캡처 실패: ' + e.message); return; }
-  const card = addCapture({ thumb: shot.image, videoTime, kind: ev.kind });
+  const card = addCapture({ thumb: shot.image || null, videoTime, kind: ev.kind });
   try {
-    if (!S.session) S.session = (await api.session({ videoUrl: S.video.url, videoTitle: S.video.title, source: S.video.source })).sessionId;
-    const res = await api.capture({
-      sessionId: S.session, videoUrl: S.video.url, videoTime: +videoTime.toFixed(2),
-      capturedAt: new Date().toISOString(), kind: ev.kind, dwellMs: ev.dwellMs, gaze: shot.gaze, image: shot.image,
-    });
+    if (!S.session) {
+      const r = await api.session({ videoUrl: S.videoUrl, videoTitle: v.title, source: v.source, youtubeId: v.youtubeId });
+      if (token !== S.token) return;
+      S.session = r.sessionId;
+    }
+    const body = {
+      sessionId: S.session, videoUrl: S.videoUrl, videoTime: +videoTime.toFixed(2),
+      capturedAt: new Date().toISOString(), kind: ev.kind, dwellMs: ev.dwellMs, gaze: shot.gaze,
+    };
+    if (v.source === 'youtube') body.youtubeId = v.youtubeId; else body.image = shot.image; // youtube: server renders the frame
+    const res = await api.capture(body);
+    if (token !== S.token) return;
     card.setResult(res);
+    res.__thumb = shot.image || res.imageUrl;
     if (res.speak && res.say && !S.finished) openDialog(card, res);
   } catch (e) {
+    if (token !== S.token) return;
+    if (e.status === 409) { card.remove(); return; } // not_cached: skip silently
     card.setError();
     toast('서버 오류: ' + e.message);
   }
 }
 
-// ---------- bubble dialogue (buttons, head gestures, or Y/N keys) ----------
+// ---------- bubble dialogue (head gestures, Y/N keys, or buttons for debugging) ----------
 let dlg = null; // {card, res, alt: -1 = original, asking}
 const gest = new HeadGestures(() => (S.source && S.source.positions ? S.source.positions() : null), (g) => onGesture(g));
 
 function curItem() {
   const { res, alt } = dlg;
-  if (alt < 0) return { label: res.item && res.item.label, links: res.links };
+  if (alt < 0) {
+    const it = res.item || {};
+    return { label: it.label, category: it.category, description: it.description, links: res.links };
+  }
   const a = res.alternatives[alt];
-  return { label: a.label || a.query || '', links: a.links };
+  return { label: a.label || a.query || '', category: a.category, description: a.description, links: a.links };
 }
 function feedback(answer) {
   const it = curItem();
@@ -192,9 +262,12 @@ function answerYes(d) {
   d.asking = false;
   feedback('yes');
   const it = curItem();
-  bubbleSay('찾아볼게요');
+  const isText = it.category === 'text';
+  bubbleSay(isText && it.description ? it.description : '더 알아볼게요'); // text: show the translation/explanation
   bubbleLinks(it.links);
-  d.card.showLinks(it.links);
+  d.card.showLinks(it.links || []);
+  addWish({ id: d.res.captureId + ':' + d.alt, thumb: d.res.__thumb, label: it.label, category: it.category, links: it.links });
+  setTimeout(() => { if (dlg === d) dismissBubble(); }, isText ? 20000 : 12000); // nothing is clickable: close on its own
 }
 function answerNo(d) {
   if (d !== dlg || !d.asking) return;
@@ -224,28 +297,40 @@ addEventListener('keydown', (e) => {
 
 // ---------- summary ----------
 async function finish() {
-  if (S.finished) return;
+  if (S.finished || S.state !== 'watch') return;
   S.finished = true;
-  dismissBubble();
+  const token = S.token;
+  dismissBubble(); dlg = null;
   S.player && S.player.pause();
-  $('#summary').hidden = false;
+  show('summary');
   $('#summary-body').innerHTML = '<p class="muted">정리하는 중이에요…</p>';
   try {
     if (!S.session) throw new Error('세션이 없어요');
-    renderSummary(await api.summary({ sessionId: S.session }));
+    const data = await api.summary({ sessionId: S.session });
+    if (token !== S.token) return;
+    renderSummary(data);
   } catch (e) {
+    if (token !== S.token) return;
     $('#summary-body').innerHTML = '';
     const p = document.createElement('p'); p.className = 'muted'; p.textContent = '요약을 불러오지 못했어요: ' + e.message;
-    const b = document.createElement('button'); b.className = 'btn primary'; b.textContent = '다시 시도';
-    b.onclick = () => { S.finished = false; finish(); };
-    $('#summary-body').append(p, b);
+    $('#summary-body').append(p);
     toast('요약 오류: ' + e.message);
   }
+  startNextCountdown(token);
 }
-$('#btn-done').onclick = finish;
-$('#btn-restart').onclick = () => { location.href = location.pathname + location.search; };
+
+function startNextCountdown(token) {
+  clearInterval(S.nextTimer);
+  let left = Math.round(CONFIG.nextVideoAutoMs / 1000);
+  const label = () => { $('#next-count').textContent = `(${left}초 뒤 자동)`; };
+  label();
+  S.nextTimer = setInterval(() => {
+    if (token !== S.token || S.state !== 'summary') return clearInterval(S.nextTimer);
+    if (--left <= 0) { clearInterval(S.nextTimer); goNext(); } else label();
+  }, 1000);
+}
 
 $('#chip-mode').hidden = !(MOCK || MOUSE);
 $('#chip-mode').textContent = [MOCK && 'mock', MOUSE && 'mouse'].filter(Boolean).join('+');
 $('#hud').hidden = !DEBUG;
-loadVideos();
+show('landing');

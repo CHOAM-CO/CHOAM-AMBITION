@@ -82,3 +82,46 @@ body:not(.debug) #webgazerVideoContainer { display:none !important; }
 .calib-pt.auto { pointer-events:none; background:var(--accent); border:2px solid #fff; width:26px; height:26px; margin:-13px 0 0 -13px; }
 .calib-pt.auto::after { content:""; position:absolute; inset:-30px; border-radius:50%; border:3px solid var(--accent); animation:shrink var(--dur,1.4s) linear forwards; }
 @keyframes shrink { from { transform:scale(1.8); opacity:.4; } to { transform:scale(.55); opacity:1; } }
+
+/* round 5: hands-free flow */
+.landing { text-align:center; margin-top:14vh; padding:0 16px; }
+.start-btn { font:inherit; font-size:40px; font-weight:700; padding:36px 120px; margin:32px 0 16px; border-radius:24px; border:0; background:var(--accent); color:var(--accent-ink); cursor:pointer; }
+.start-btn:disabled { opacity:.5; }
+.home { max-width:1100px; margin:4vh auto; padding:0 20px; }
+.home h1 { margin:0 0 4px; }
+.video-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:18px; margin-top:22px; }
+.vcard { position:relative; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:10px 10px 14px; }
+.vcard img { width:100%; aspect-ratio:16 / 9; object-fit:cover; border-radius:8px; display:block; background:#222; }
+img.blank { background:#333 !important; visibility:visible; }
+.vtitle { margin-top:8px; font-weight:600; }
+.vdur { position:absolute; right:18px; top:calc(10px + 6px); background:#000b; font-size:12px; padding:1px 6px; border-radius:4px; }
+.vbadge { position:absolute; left:18px; top:18px; background:#d9822b; color:#1a1204; font-weight:700; font-size:12px; padding:2px 8px; border-radius:99px; }
+.vcard.pending img { filter:grayscale(1) brightness(.6); }
+.vcard.pending { opacity:.7; }
+.btn.big { font-size:20px; padding:16px 36px; min-width:150px; }
+.watch-actions { display:flex; gap:16px; justify-content:center; margin-top:14px; }
+.watch-actions .btn { padding-block:12px; }
+.summary-actions { display:flex; gap:16px; margin-bottom:18px; }
+.summary-actions small { font-weight:400; opacity:.8; margin-left:6px; }
+.summary-box h2 { margin:6px 0; }
+.rec-grid { grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); }
+.rec img { width:90px; height:90px; }
+
+/* generic dwell button: ring fills while the gaze rests on it */
+.dwell { position:relative; --dp:0deg; transition:transform .15s; }
+.dwell.hot { transform:scale(1.03); }
+.dwell::after { content:""; position:absolute; inset:-7px; border-radius:inherit; padding:5px; pointer-events:none;
+  background:conic-gradient(var(--accent) var(--dp), transparent 0);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+
+/* side panel: captures + 관심 목록 */
+.panel { display:flex; flex-direction:column; }
+.panel .captures { flex:1 1 55%; overflow:auto; min-height:0; }
+.panel .wish-h { margin-top:12px; }
+.panel #wish { flex:1 1 40%; }
+.tag { align-self:flex-start; font-size:11px; padding:0 8px; border-radius:99px; background:#2b3550; color:#b9c8ff; margin:2px 0; }
+.tag[hidden] { display:none; }
+.plain-link { font-size:12px; color:#8ab4ff; word-break:break-all; user-select:text; }
+.cap.wish { border-color:#3b5a3b; }
+[hidden] { display:none !important; }

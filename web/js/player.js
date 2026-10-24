@@ -65,9 +65,9 @@ export async function createYouTubePlayer(host, yt) {
   const p = await new Promise((res) => {
     const player = new YT.Player('yt-target', {
       videoId: yt.id, width: '100%', height: '100%',
-      playerVars: { playsinline: 1, rel: 0, origin: location.origin },
+      playerVars: { playsinline: 1, rel: 0, autoplay: 1, origin: location.origin },
       events: {
-        onReady: () => res(player),
+        onReady: () => { try { player.unMute(); player.playVideo(); } catch {} res(player); },
         onStateChange: (e) => { state = e.data; if (e.data === 0) endedCb(); },
       },
     });

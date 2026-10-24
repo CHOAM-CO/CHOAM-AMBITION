@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CHOAM AMBITION</title>
-<link rel="stylesheet" href="style.css?v=r6">
+<link rel="stylesheet" href="style.css?v=r7">
 </head>
 <body>
 <header class="top">
@@ -14,29 +14,37 @@
     <span class="chip" id="chip-src"></span>
     <span class="chip">캡처 <b id="cap-count">0</b></span>
   </div>
-  <button class="btn" id="btn-done" hidden>다 봤어</button>
 </header>
 
 <main>
-  <section id="screen-pick" class="pick">
+  <section id="screen-landing" class="landing">
+    <h1>눈으로 보는 AMBITION</h1>
+    <button class="start-btn" id="btn-start">시작</button>
+    <p class="muted">이 버튼 한 번만 눌러 주세요. 그 뒤로는 눈과 고개만으로 진행돼요.</p>
+  </section>
+
+  <section id="screen-home" class="home" hidden>
     <h1>무엇을 볼까요?</h1>
-    <p class="muted">시선이 오래 머문 곳을 에이전트가 알아채고, 필요하면 찾아드려요.</p>
-    <div id="video-list" class="video-list"><p class="muted">불러오는 중…</p></div>
-    <form id="yt-form" class="yt-form">
-      <input id="yt-url" type="text" placeholder="YouTube 주소 (watch?v=, youtu.be, shorts)" autocomplete="off">
-      <button class="btn primary" type="submit">YouTube로 보기</button>
-    </form>
+    <p class="muted">보고 싶은 영상을 1.5초 동안 쳐다보면 재생돼요.</p>
+    <div id="video-list" class="video-grid"><p class="muted">불러오는 중…</p></div>
   </section>
 
   <section id="screen-watch" class="watch" hidden>
     <div class="stage">
       <div id="player" class="player"></div>
+      <div class="watch-actions">
+        <button class="btn big" id="btn-home">홈으로</button>
+        <button class="btn big" id="btn-done">다 봤어</button>
+      </div>
       <div id="bubble-slot"></div>
     </div>
     <aside class="panel">
       <h2>눈여겨본 장면</h2>
       <p id="captures-empty" class="muted">영상을 보다가 한 곳을 오래 보면 여기에 쌓여요.</p>
       <ol id="captures" class="captures"></ol>
+      <h2 class="wish-h">관심 목록</h2>
+      <p id="wish-empty" class="muted">물어볼 때 고개를 끄덕이면 여기에 담겨요.</p>
+      <ol id="wish" class="captures"></ol>
     </aside>
   </section>
 </main>
@@ -45,15 +53,18 @@
 <div id="calib" class="overlay calib" hidden></div>
 <div id="summary" class="overlay summary" hidden>
   <div class="summary-box">
-    <h2>오늘 눈여겨본 것들</h2>
+    <div class="summary-actions">
+      <button class="btn big primary" id="btn-next">다음 영상 <small id="next-count"></small></button>
+      <button class="btn big" id="btn-home2">홈으로</button>
+    </div>
+    <h2>방금 영상에서 눈여겨본 것들</h2>
     <div id="summary-body"></div>
-    <div class="row"><button class="btn primary" id="btn-restart">처음으로</button></div>
   </div>
 </div>
 
 <div id="gaze-dot"></div><div id="gesture-badge"></div>
 <div id="hud" class="hud" hidden></div>
 <div id="toasts"></div>
-<script type="module" src="js/main.js?v=r6"></script>
+<script type="module" src="js/main.js?v=r7"></script>
 </body>
 </html>

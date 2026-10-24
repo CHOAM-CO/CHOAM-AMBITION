@@ -52,6 +52,10 @@ export const CONFIG = {
     cooldownMs: 1200,
   },
 
+  // gaze-dwell buttons (home cards, watch/summary controls)
+  dwell: { ms: 1500, marginPx: 24, lockMs: 1000 },
+  nextVideoAutoMs: 15000,       // summary: auto-advance to the next video
+
   // eyes-only calibration (default); ?calib=click uses click calibration
   autoCalib: { waitMs: 700, collectMs: 1000, tickMs: 50 },
 

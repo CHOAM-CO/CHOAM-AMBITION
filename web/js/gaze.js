@@ -1,4 +1,4 @@
-import { CONFIG } from './events.js?v=r6';
+import { CONFIG } from './events.js?v=r7';
 // Gaze sources: WebGazer (webcam) or mouse. Exposes latest raw point in client px.
 const WEBGAZER_SRC = 'https://cdn.jsdelivr.net/npm/webgazer@3.4.0/dist/webgazer.min.js';
 
@@ -74,6 +74,8 @@ export async function runCalibration(root, source, getGaze, clickMode = false) {
   const clickPts = [[12, 14], [88, 14], [50, 50], [12, 86], [88, 86]]; // 4 corners inset + center
   const autoPts = []; // 3x3 grid, snake order (L->R, R->L, L->R); bottom row less extreme
   [15, 50, 80].forEach((y, i) => { const xs = [12, 50, 88]; (i % 2 ? xs.reverse() : xs).forEach((x) => autoPts.push([x, y])); });
+  let attempt = 0;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   for (;;) {
     Object.assign(CONFIG.correction, { active: false, a: 1, b: 0, c: 1, d: 0 });
     source.clear && source.clear();
@@ -99,7 +101,8 @@ export async function runCalibration(root, source, getGaze, clickMode = false) {
     } else {
       // eyes-only: train WebGazer on every tick while the viewer looks at the point (no clicks, no mouse training)
       source.wg && source.wg.removeMouseEventListeners && source.wg.removeMouseEventListeners();
-      const ac = CONFIG.autoCalib, sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const ac = CONFIG.autoCalib;
+      await sleep(1500); // let the viewer read the instruction
       for (const [px, py] of autoPts) {
         const d = document.createElement('div');
         d.className = 'calib-pt auto'; d.style.left = px + '%'; d.style.top = py + '%';
@@ -151,7 +154,17 @@ export async function runCalibration(root, source, getGaze, clickMode = false) {
     }
     const score = isNaN(after) ? 0 : Math.max(0, Math.round(100 - (after / (innerHeight * 0.35)) * 100));
     const verdict = score >= 70 ? '좋아요' : score >= 45 ? '쓸 만해요' : '낮아요, 다시 보정을 추천해요';
-    root.innerHTML = `<div class="calib-result"><h2>정확도 ${score}%</h2><p>${isNaN(before) ? '얼굴이 인식되지 않았어요' : `${applied ? '보정 반영 · ' : ''}평균 오차 ${Math.round(before)}px → ${Math.round(after)}px · ${verdict}`}</p>
+    const line = isNaN(before) ? '얼굴이 인식되지 않았어요' : `${applied ? '보정 반영 · ' : ''}평균 오차 ${Math.round(before)}px → ${Math.round(after)}px · ${verdict}`;
+    if (!clickMode) {
+      // no buttons: show the result for 2 s, redo once if poor, then go on regardless
+      attempt++;
+      const redo = score < 45 && attempt === 1;
+      root.innerHTML = `<div class="calib-result"><h2>정확도 ${score}%</h2><p>${line}</p><p class="muted">${redo ? '한 번 더 맞춰볼게요' : '곧 시작해요'}</p></div>`;
+      await sleep(2000);
+      if (redo) continue;
+      break;
+    }
+    root.innerHTML = `<div class="calib-result"><h2>정확도 ${score}%</h2><p>${line}</p>
       <div class="row"><button class="btn" id="cal-redo">다시 보정</button><button class="btn primary" id="cal-go">이대로 시작</button></div></div>`;
     const choice = await new Promise((res) => {
       root.querySelector('#cal-redo').onclick = () => res('redo');

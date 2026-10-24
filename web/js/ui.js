@@ -1,5 +1,5 @@
 // DOM helpers: toasts, capture panel, agent bubble, summary.
-import { CONFIG } from './events.js?v=r6';
+import { CONFIG } from './events.js?v=r7';
 
 const $ = (s) => document.querySelector(s);
 export const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -23,26 +23,62 @@ function linkList(links) {
   return ul;
 }
 
+export const CATEGORY_KO = { product: '상품', place: '장소', food: '음식', animal: '동물', text: '글자', person: '인물', scene: '장면', other: '기타' };
+const catTag = (c) => (c ? CATEGORY_KO[c] || c : '');
+
 let capCount = 0;
+export function clearCaptures() {
+  capCount = 0; $('#cap-count').textContent = 0;
+  $('#captures').innerHTML = ''; $('#captures-empty').hidden = false;
+}
 export function addCapture({ thumb, videoTime, kind }) {
   $('#captures-empty').hidden = true;
   const li = document.createElement('li');
   li.className = 'cap';
-  li.innerHTML = '<img alt=""><div class="meta"><span class="time"></span><span class="kind"></span><strong class="label">분석 중…</strong><span class="desc"></span><div class="extra"></div></div>';
-  li.querySelector('img').src = thumb;
+  li.innerHTML = '<img alt=""><div class="meta"><span class="time"></span><span class="kind"></span><strong class="label">분석 중…</strong><span class="tag" hidden></span><span class="desc"></span><div class="extra"></div></div>';
+  const img = li.querySelector('img');
+  if (thumb) img.src = thumb; else img.classList.add('blank');
+  img.onerror = () => img.classList.add('blank');
   li.querySelector('.time').textContent = fmtTime(videoTime);
   li.querySelector('.kind').textContent = kind === 'fixation' ? '응시' : '시선 이동';
   $('#captures').prepend(li);
   $('#cap-count').textContent = ++capCount;
   return {
     setResult(res) {
+      if (res.imageUrl && !thumb) { img.classList.remove('blank'); img.src = res.imageUrl; }
       const lab = li.querySelector('.label');
-      if (res.item) { lab.textContent = res.item.label; li.querySelector('.desc').textContent = res.item.description || ''; }
-      else { lab.textContent = '인식된 물건 없음'; li.classList.add('none'); }
+      if (res.item) {
+        lab.textContent = res.item.label; li.querySelector('.desc').textContent = res.item.description || '';
+        const t = li.querySelector('.tag'); if (res.item.category) { t.textContent = catTag(res.item.category); t.hidden = false; }
+      } else { lab.textContent = '인식된 것 없음'; li.classList.add('none'); }
     },
     setError() { li.querySelector('.label').textContent = '분석 실패'; li.classList.add('none'); },
+    remove() { li.remove(); $('#cap-count').textContent = --capCount; if (!capCount) $('#captures-empty').hidden = false; },
+    thumbSrc: () => img.src,
     showLinks(links) { const ex = li.querySelector('.extra'); ex.innerHTML = ''; ex.appendChild(linkList(links)); },
   };
+}
+
+/** 관심 목록 (nod = add). Links are plain text: nothing on screen is clickable in the hands-free demo. */
+const wishIds = new Set();
+export function addWish({ id, thumb, label, category, links }) {
+  if (id && wishIds.has(id)) return;
+  if (id) wishIds.add(id);
+  $('#wish-empty').hidden = true;
+  const li = document.createElement('li');
+  li.className = 'cap wish';
+  const img = document.createElement('img'); img.alt = ''; if (thumb) img.src = thumb;
+  const m = document.createElement('div'); m.className = 'meta';
+  const l = document.createElement('strong'); l.textContent = label || '';
+  m.appendChild(l);
+  if (category) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = catTag(category); m.appendChild(t); }
+  for (const k of links || []) {
+    const p = document.createElement('span'); p.className = 'plain-link';
+    const u = (k.url || '').replace(/^https?:\/\//, '');
+    p.textContent = `${k.title || ''} ${u.length > 44 ? u.slice(0, 44) + '…' : u}`.trim(); m.appendChild(p);
+  }
+  li.append(img, m);
+  $('#wish').prepend(li);
 }
 
 let bubbleEl = null, bubbleTimer = null, bubbleText = null;
@@ -76,7 +112,6 @@ export function bubbleLinks(links) {
   bubbleLock();
   bubbleEl.querySelectorAll('.links, .muted, [data-role=close]').forEach((n) => n.remove());
   if (links && links.length) bubbleEl.appendChild(linkList(links));
-  else { const e = document.createElement('p'); e.className = 'muted'; e.textContent = '아직 찾은 링크가 없어요.'; bubbleEl.appendChild(e); }
   const close = document.createElement('button'); close.className = 'btn'; close.textContent = '닫기'; close.dataset.role = 'close'; close.onclick = dismissBubble;
   bubbleEl.appendChild(close);
 }
@@ -97,7 +132,7 @@ export function renderSummary(data) {
   const recs = data.recommendations || [];
   if (!recs.length) { const e = document.createElement('p'); e.className = 'muted'; e.textContent = '추천할 항목이 없어요.'; box.appendChild(e); }
   const grid = document.createElement('div'); grid.className = 'rec-grid';
-  for (const r of recs) {
+  for (const r of recs.slice(0, 6)) { // gaze cannot scroll: keep it to what fits
     const c = document.createElement('article'); c.className = 'rec';
     const img = document.createElement('img'); img.alt = ''; img.src = r.imageUrl;
     const b = document.createElement('div'); b.className = 'meta';
