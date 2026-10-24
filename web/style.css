@@ -67,7 +67,7 @@ html, body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 sy
 #gaze-dot.active { border-color:#3cff9a; }
 #gaze-dot::after { content:""; position:absolute; inset:-6px; border-radius:50%; background:conic-gradient(var(--accent) var(--p,0deg), transparent 0); -webkit-mask:radial-gradient(circle, transparent 15px, #000 16px); mask:radial-gradient(circle, transparent 15px, #000 16px); }
 body.grabbing #gaze-dot { visibility:hidden; }
-#webgazerVideoContainer { position:fixed !important; left:12px !important; bottom:12px !important; top:auto !important; width:160px !important; height:120px !important; z-index:90 !important; border-radius:8px; overflow:hidden; opacity:.85; }
+#webgazerVideoContainer { position:fixed !important; left:12px !important; bottom:12px !important; top:auto !important; width:160px !important; height:120px !important; z-index:55 !important; pointer-events:none !important; border-radius:8px; overflow:hidden; opacity:.85; }
 #webgazerVideoContainer video, #webgazerVideoCanvas { width:160px !important; height:120px !important; }
 .hud { position:fixed; right:8px; top:56px; z-index:120; font:11px monospace; background:#000a; padding:3px 6px; border-radius:4px; }
 #toasts { position:fixed; right:16px; bottom:16px; z-index:200; display:grid; gap:8px; }
