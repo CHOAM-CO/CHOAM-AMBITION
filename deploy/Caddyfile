@@ -8,6 +8,7 @@ http://:8787 {
 			max_size 10MB
 		}
 		reverse_proxy 127.0.0.1:8788 {
+			flush_interval -1
 			transport http {
 				response_header_timeout 90s
 			}

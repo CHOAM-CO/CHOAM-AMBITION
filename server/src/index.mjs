@@ -7,6 +7,7 @@ import * as store from './store.mjs';
 import { analyzeCrop, summarize, linksFor, visionModel, summaryModel } from './ai.mjs';
 import * as yt from './youtube.mjs';
 import { handleChat } from './chat.mjs';
+import { handleVoiceTurn } from './voice.mjs';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -26,6 +27,28 @@ async function readJson(req) {
     chunks.push(c);
   }
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { throw new HttpError(400, 'invalid JSON'); }
+}
+
+async function readRaw(req) {
+  const chunks = []; let n = 0;
+  for await (const c of req) { n += c.length; if (n > config.maxBodyBytes) throw new HttpError(413, 'body too large'); chunks.push(c); }
+  return Buffer.concat(chunks);
+}
+
+// STT: raw audio -> local Qwen3-ASR service on the box
+async function handleAsr(req, url) {
+  const t0 = Date.now();
+  const audio = await readRaw(req);
+  if (!audio.length) throw new HttpError(400, 'empty audio body');
+  const lang = ['auto', 'ko', 'en'].includes(url.searchParams.get('lang')) ? url.searchParams.get('lang') : 'auto';
+  let r;
+  try {
+    r = await fetch(`${config.asrUrl}/transcribe?lang=${lang}`, { method: 'POST', body: audio, headers: { 'content-type': req.headers['content-type'] || 'application/octet-stream' }, signal: AbortSignal.timeout(30000) });
+  } catch (e) { throw new HttpError(502, `asr unavailable: ${e.message}`); }
+  const txt = await r.text();
+  let j; try { j = JSON.parse(txt); } catch { throw new HttpError(502, `asr bad response (${r.status})`); }
+  if (!r.ok) throw new HttpError(502, `asr error ${r.status}: ${String(j.error || txt).slice(0, 200)}`);
+  return { ...j, totalMs: Date.now() - t0 };
 }
 
 const num = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
@@ -164,6 +187,8 @@ async function route(req, res, url) {
   }
   let ym;
   if (method === 'GET' && (ym = p.match(/^\/api\/youtube\/status\/([^/]+)$/))) return send(res, 200, yt.statusOf(ym[1]));
+  if (method === 'POST' && p === '/api/asr') return send(res, 200, await handleAsr(req, url));
+  if (method === 'POST' && p === '/api/voice/turn') return handleVoiceTurn(await readJson(req), req, res, { HttpError });
   if (method === 'POST' && p === '/api/chat') return send(res, 200, await handleChat(await readJson(req), { HttpError }));
   if (method === 'POST' && p === '/api/feedback') return send(res, 200, await handleFeedback(await readJson(req)));
   if (method === 'POST' && p === '/api/summary') return send(res, 200, await handleSummary(await readJson(req)));
