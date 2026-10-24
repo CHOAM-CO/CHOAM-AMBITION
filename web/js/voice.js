@@ -54,6 +54,10 @@ export class Voice {
     try { r.start(); } catch { this.rec = null; }
   }
 
+  /** pause/resume recognition (webspeech mode) while the agent talks or the mic is muted */
+  hold(on) { if (on) this._pause(); else this._resume(); }
+  mute(on) { if (on) { this.wanted = false; this._pause(); this._set('off'); } else { this.wanted = true; this.paused = false; this._launch(); } }
+
   _speechStart() { if (!this.inSpeech) { this.inSpeech = true; this.h.onSpeechStart(); } }
 
   _pause() { this.paused = true; if (this.rec) { try { this.rec.abort(); } catch {} } }

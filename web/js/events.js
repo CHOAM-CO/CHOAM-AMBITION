@@ -63,7 +63,9 @@ export const CONFIG = {
   hands: { fps: 10, minScore: 0.6, holdMs: 600, cooldownMs: 1500 },
 
   // voice chat
-  voice: { duckLevel: 0.2, minChars: 2 }, // duck the video to 20% while the viewer talks; ignore finals of <= minChars
+  voice: { duckLevel: 0.15, minChars: 2 }, // duck the video to 15% while either side talks; ignore finals of <= minChars
+  // call mode (VAD + ASR + streamed TTS)
+  call: { positiveThreshold: 0.6, negativeThreshold: 0.4, redemptionMs: 800, minSpeechMs: 250, preSpeechPadMs: 300, idleMs: 45000, speakDialogs: true },
 
   // gaze-dwell buttons (home cards, watch/summary controls)
   dwell: { ms: 1500, marginPx: 24, lockMs: 1000 },

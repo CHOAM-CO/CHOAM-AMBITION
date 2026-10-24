@@ -1,5 +1,5 @@
 // Thin API client. ?mock=1 swaps every /api call for local fake responses.
-import { mockApi } from './mock.js?v=r12';
+import { mockApi } from './mock.js?v=r13';
 
 export const PARAMS = new URLSearchParams(location.search);
 export const MOCK = PARAMS.get('mock') === '1';
@@ -27,7 +27,46 @@ async function call(method, path, body) {
   }
 }
 
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** POST /api/asr: wav Blob -> {text, lang, ms, totalMs} */
+async function asr(blob) {
+  if (MOCK) return mockApi('POST', '/api/asr', null);
+  const r = await fetch('/api/asr?lang=auto', { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: blob });
+  if (!r.ok) throw new Error(`asr ${r.status}`);
+  return r.json();
+}
+
+/** POST /api/tts -> ArrayBuffer (wav). Throws when unavailable (the caller falls back to speechSynthesis). */
+async function tts(text, signal) {
+  if (MOCK) return mockApi('POST', '/api/tts', { text });
+  const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice: 'sera' }), signal });
+  if (!r.ok) throw new Error(`tts ${r.status}`);
+  return r.arrayBuffer();
+}
+
+/** POST /api/voice/turn: NDJSON stream; onEvent gets every parsed line. Abortable. */
+async function turn(body, signal, onEvent) {
+  if (MOCK) { await mockApi('STREAM', '/api/voice/turn', { body, signal, onEvent }); return; }
+  const r = await fetch('/api/voice/turn', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+  if (!r.ok) throw new Error(`turn ${r.status}`);
+  const rd = r.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { value, done } = await rd.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (line) { try { onEvent(JSON.parse(line)); } catch {} }
+    }
+  }
+  if (buf.trim()) { try { onEvent(JSON.parse(buf.trim())); } catch {} }
+}
+
 export const api = {
+  asr, tts, turn,
   health: () => call('GET', '/api/health'),
   videos: () => call('GET', '/api/videos'),
   session: (b) => call('POST', '/api/session', b),

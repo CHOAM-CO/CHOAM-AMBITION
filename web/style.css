@@ -195,3 +195,8 @@ body.grabbing #gaze-dot { visibility:hidden; }
 body:not(.debug) #webgazerVideoContainer { display:none !important; }
 #webgazerVideoContainer video, #webgazerVideoCanvas { width:160px !important; height:120px !important; }
 @media (max-width:1000px) { .watch { grid-template-columns:1fr; height:auto; overflow:visible; } .top { grid-template-columns:auto 1fr; } .top-right { display:none; } }
+
+/* call chip states */
+.chip.dwell { padding:2px 10px; }
+.chip.call-speaking { color:#ffd479; }
+.chip.call-thinking { color:var(--accent); }

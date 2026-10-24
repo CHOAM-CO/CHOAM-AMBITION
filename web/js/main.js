@@ -1,13 +1,14 @@
-import { api, MOCK, PARAMS } from './api.js?v=r12';
-import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r12';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r12';
-import { EyeTheiaSource } from './eyetheia.js?v=r12';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r12';
-import { grab } from './capture.js?v=r12';
-import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime, openChatBubble, updateChatBubble, chatAdd, chatClear } from './ui.js?v=r12';
-import { HeadGestures } from './gesture.js?v=r12';
-import { Dwell } from './dwell.js?v=r12';
-import { Voice } from './voice.js?v=r12';
+import { api, MOCK, PARAMS } from './api.js?v=r13';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r13';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r13';
+import { EyeTheiaSource } from './eyetheia.js?v=r13';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r13';
+import { grab } from './capture.js?v=r13';
+import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime, openChatBubble, updateChatBubble, chatAdd, chatClear } from './ui.js?v=r13';
+import { HeadGestures } from './gesture.js?v=r13';
+import { Dwell } from './dwell.js?v=r13';
+import { Voice } from './voice.js?v=r13';
+import { VadMic, AgentVoice, classifyAnswer } from './call.js?v=r13';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -31,7 +32,7 @@ function show(state) {
 
 // ---------- start (the only click) ----------
 $('#btn-start').onclick = async () => {
-  voice.start(); // inside the click: lets the mic permission prompt appear
+  callStart(); // inside the click: unlocks audio playback and lets the mic permission prompt appear
   $('#btn-start').disabled = true;
   S.state = 'setup';
   $('#screen-landing').hidden = true;
@@ -227,7 +228,7 @@ function tick() {
   dot.classList.toggle('active', inside);
   if (inside) detector.push(now, sm.x, sm.y); else detector.reset();
   dot.style.setProperty('--p', (inside ? detector.fixProgress : 0) * 360 + 'deg');
-  if (DEBUG) $('#hud').textContent = `${S.state} gaze ${sm.x | 0},${sm.y | 0} inside=${inside} fix=${detector.fixProgress.toFixed(2)} mic=${voice.state}${voice.speaking ? '/speaking' : ''}${voice.inSpeech ? '/hearing' : ''} sac=${detector.sacState} a=${K.a.toFixed(2)} b=${K.b | 0} c=${K.c.toFixed(2)} d=${K.d | 0}${K.active ? '' : ' (off)'}${S.source.debugInfo ? '\n' + S.source.debugInfo() : ''}`;
+  if (DEBUG) $('#hud').textContent = `${S.state} gaze ${sm.x | 0},${sm.y | 0} inside=${inside} fix=${detector.fixProgress.toFixed(2)} call=${STT}/${muted ? 'muted' : vadReady ? 'ready' : 'loading'}${agentVoice.speaking ? '/speaking' : ''}${turnActive ? '/turn' : ''}${hearing ? '/hearing' : ''} sac=${detector.sacState} a=${K.a.toFixed(2)} b=${K.b | 0} c=${K.c.toFixed(2)} d=${K.d | 0}${K.active ? '' : ' (off)'}${S.source.debugInfo ? '\n' + S.source.debugInfo() : ''}`;
 }
 
 // ---------- capture ----------
@@ -289,13 +290,13 @@ function openDialog(card, res) {
   const d = { card, res, alt: -1, asking: true };
   d.chat = res.say ? chatAdd({ who: 'agent', text: res.say }) : null;
   const ok = showBubble({ say: res.say, onYes: () => answerYes(d), onNo: () => answerNo(d) });
-  if (ok) dlg = d;
+  if (ok) { dlg = d; activity(); speakLine(res.say); }
 }
-function answerYes(d) {
+function answerYes(d, said) {
   if (d !== dlg || !d.asking) return;
   d.asking = false;
   feedback('yes');
-  chatAdd({ who: 'user', text: '끄덕 ✓ 응!' });
+  chatAdd({ who: 'user', text: said || '끄덕 ✓ 응!' });
   const it = curItem();
   const isText = it.category === 'text';
   bubbleSay(isText && it.description ? it.description : '더 알아볼게요'); // text: show the translation/explanation
@@ -303,22 +304,23 @@ function answerYes(d) {
   chatAdd({ who: 'agent', text: isText && it.description ? it.description : '더 알아볼게요', links: it.links });
   d.card.showLinks(it.links || []);
   addWish({ id: d.res.captureId + ':' + d.alt, thumb: d.res.__thumb, label: it.label, category: it.category, links: it.links });
+  speakLine(isText && it.description ? it.description : '더 알아볼게요');
   setTimeout(() => { if (dlg === d) dismissBubble(); }, isText ? 20000 : 12000); // nothing is clickable: close on its own
 }
-function answerNo(d) {
+function answerNo(d, said) {
   if (d !== dlg || !d.asking) return;
   feedback('no');
-  chatAdd({ who: 'user', text: '도리도리 ✗ 아니' });
+  chatAdd({ who: 'user', text: said || '도리도리 ✗ 아니' });
   const alts = d.res.alternatives || [];
   if (d.alt + 1 < alts.length) {
     d.alt++;
     bubbleSay(alts[d.alt].say); // links appear only after a yes
-    chatAdd({ who: 'agent', text: alts[d.alt].say });
+    chatAdd({ who: 'agent', text: alts[d.alt].say }); speakLine(alts[d.alt].say);
   } else {
     d.asking = false;
     bubbleLock();
     bubbleSay('알겠어요, 방해 안 할게요');
-    chatAdd({ who: 'agent', text: '알겠어요, 방해 안 할게요' });
+    chatAdd({ who: 'agent', text: '알겠어요, 방해 안 할게요' }); speakLine('알겠어요, 방해 안 할게요');
     setTimeout(() => { if (dlg === d) dismissBubble(); }, 2000);
   }
 }
@@ -349,51 +351,124 @@ addEventListener('keydown', (e) => {
   if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName) || e.metaKey || e.ctrlKey) return;
   if (e.key === 'y' || e.key === 'Y') onGesture('nod');
   else if (e.key === 'n' || e.key === 'N') onGesture('shake');
+  else if (e.key === 'm' || e.key === 'M') toggleMute();
   else if (e.key === 'p' || e.key === 'P') handAction('Open_Palm');
   else if (e.key === 'i' || e.key === 'I') handAction('Pointing_Up');
   else if (e.key === 'v' || e.key === 'V') handAction('Victory');
 });
 
-// ---------- voice chat ----------
+// ---------- call mode: VAD + ASR in, streamed turn + TTS out ----------
 const capText = $('#caption-text'), capInput = $('#caption-input');
-let capTimer = null, duckTimer = null, duckSaved = null, chatBusy = 0, chatSeq = 0;
-const MIC_LABEL = { on: '마이크 켜짐', off: '마이크 꺼짐', error: '마이크 오류', unsupported: '음성 미지원' };
+const STT = PARAMS.get('stt') || 'vad'; // vad (default) | webspeech | off
+let capTimer = null, duckTimer = null, duckSaved = null, turnCtl = null, turnActive = false, chatSeq = 0, hearing = false, muted = false;
+let lastActivity = performance.now(), vadReady = false;
+const activity = () => { lastActivity = performance.now(); };
 
-const voice = new Voice({
-  onState: (s) => {
-    const c = $('#chip-mic'); c.textContent = MIC_LABEL[s] || s; c.className = 'chip' + (s === 'on' ? ' mic-on' : s === 'error' ? ' mic-error' : '');
-    if (!capTimer) capText.textContent = s === 'on' ? '🎙 …' : '🎙 ' + (MIC_LABEL[s] || s);
-  },
-  onSpeechStart: () => { duck(true); scheduleUnduck(4000); },
-  onInterim: (t) => { clearTimeout(capTimer); capTimer = null; capText.textContent = '🎙 ' + t; capText.classList.add('interim'); scheduleUnduck(4000); },
-  onFinal: (t) => handleUtterance(t, 'voice'),
-});
+// header chip: 통화 · 듣는 중 / 생각 중 / 말하는 중
+const CALL_LABEL = { loading: '준비 중', listening: '듣는 중', thinking: '생각 중', speaking: '말하는 중', muted: '음소거', error: '마이크 오류', off: '꺼짐', unsupported: '음성 미지원' };
+function baseState() { return muted ? 'muted' : STT === 'off' ? 'off' : vadReady ? 'listening' : 'loading'; }
+function setCall(s) {
+  const c = $('#chip-mic');
+  c.textContent = '통화 · ' + (CALL_LABEL[s] || s);
+  c.className = 'chip dwell' + (s === 'listening' ? ' mic-on' : s === 'error' ? ' mic-error' : s === 'speaking' ? ' call-speaking' : s === 'thinking' ? ' call-thinking' : '');
+  if (!capTimer) capText.textContent = s === 'listening' ? '🎙 …' : '🎙 ' + (CALL_LABEL[s] || s);
+}
+const refreshCall = () => setCall(agentVoice.speaking ? 'speaking' : turnActive ? 'thinking' : baseState());
 
 function caption(text, ms = 3000) {
   capText.classList.remove('interim'); capText.textContent = '🎙 ' + text;
   clearTimeout(capTimer);
-  capTimer = setTimeout(() => { capTimer = null; capText.classList.remove('interim'); capText.textContent = voice.state === 'on' ? '🎙 …' : '🎙 ' + (MIC_LABEL[voice.state] || ''); }, ms);
+  capTimer = setTimeout(() => { capTimer = null; capText.classList.remove('interim'); refreshCall(); }, ms);
 }
 
-// duck the video volume to ~20% while the viewer talks / the agent answers
+// duck the video volume to ~15% while either side talks
 function duck(on) {
   const p = S.player; if (!p || !p.setVolume) return;
   if (on) { if (duckSaved == null) { duckSaved = p.getVolume(); p.setVolume(duckSaved * CONFIG.voice.duckLevel); } }
   else if (duckSaved != null) { p.setVolume(duckSaved); duckSaved = null; }
 }
-function scheduleUnduck(ms) { clearTimeout(duckTimer); duckTimer = setTimeout(() => { if (!chatBusy && !voice.speaking) duck(false); }, ms); }
+function scheduleUnduck(ms) { clearTimeout(duckTimer); duckTimer = setTimeout(() => { if (!turnActive && !agentVoice.speaking && !hearing) duck(false); }, ms); }
 
-async function handleUtterance(raw, source) {
-  const text = (raw || '').trim();
+const agentVoice = new AgentVoice((on) => {
+  if (on) { duck(true); if (voice) voice.hold(true); }
+  else { activity(); scheduleUnduck(500); if (voice && !muted) voice.hold(false); }
+  refreshCall();
+});
+const speakLine = (t) => { if (CONFIG.call.speakDialogs) agentVoice.enqueue(t); };
+
+// STT: webspeech fallback (?stt=webspeech) shares the same text handler as VAD + ASR
+const voice = STT === 'webspeech' ? new Voice({
+  onState: (s) => { vadReady = s === 'on'; if (s === 'error') setCall('error'); else refreshCall(); },
+  onSpeechStart: () => { hearing = true; duck(true); activity(); },
+  onInterim: (t) => { clearTimeout(capTimer); capTimer = null; capText.textContent = '🎙 ' + t; capText.classList.add('interim'); scheduleUnduck(4000); },
+  onFinal: (t) => { hearing = false; handleUserText(t, 'voice'); },
+}) : null;
+
+const vadMic = STT === 'vad' ? new VadMic({
+  onSpeechStart: () => { hearing = true; duck(true); activity(); capTimer = null; capText.classList.add('interim'); capText.textContent = '🎙 듣는 중…'; },
+  onSpeechRealStart: () => { // barge-in: the viewer talks over the agent
+    if (agentVoice.speaking || turnActive) { agentVoice.stop(); if (turnCtl) turnCtl.abort(); }
+  },
+  onMisfire: () => { hearing = false; scheduleUnduck(1000); capText.classList.remove('interim'); refreshCall(); },
+  onSpeechEnd: async (wav) => {
+    hearing = false; activity();
+    caption('인식 중…', 8000);
+    try {
+      const r = await api.asr(wav);
+      const t = (r.text || '').trim();
+      if (t) handleUserText(t, 'voice'); else { scheduleUnduck(500); refreshCall(); }
+    } catch (e) { toast('음성 인식 오류: ' + e.message); scheduleUnduck(500); refreshCall(); }
+  },
+}) : null;
+
+if (vadMic) window.__call = vadMic.h; // debug/test hook: __call.onSpeechStart() / onSpeechRealStart() / onSpeechEnd(wavBlob)
+
+async function callStart() { // inside the start click
+  agentVoice.unlock();
+  setCall(STT === 'off' ? 'off' : 'loading');
+  if (voice) voice.start();
+  if (vadMic) vadMic.start().then(() => { vadReady = true; refreshCall(); }).catch((e) => { console.warn('VAD failed', e); setCall('error'); toast('마이크를 켜지 못했어요: ' + (e.message || e.name)); });
+}
+
+async function toggleMute() {
+  muted = !muted;
+  if (vadMic) await vadMic.mute(muted);
+  if (voice) voice.mute(muted);
+  if (muted) { hearing = false; scheduleUnduck(300); }
+  refreshCall();
+}
+dwell.register($('#chip-mic'), toggleMute, { group: 'watch' });
+
+// a short spoken yes/no answers the open bubble like a nod/shake; anything else is a normal turn
+function handleUserText(raw) {
+  const text = (raw || '').trim(), source = arguments[1] || 'voice';
   if (text) caption(text);
+  activity();
   if (text.length <= CONFIG.voice.minChars || S.state !== 'watch' || !S.player || S.finished) { scheduleUnduck(1500); return; }
+  if (dlg && dlg.asking && bubbleActive()) {
+    const a = classifyAnswer(text);
+    if (a) { agentVoice.stop(); flashBadge(a === 'yes' ? '음성 ✓' : '음성 ✗', a === 'yes'); a === 'yes' ? answerYes(dlg, text) : answerNo(dlg, text); return; }
+  }
+  runTurn(text, { trigger: 'user', source });
+}
+
+let turnBubble = null;
+async function runTurn(text, { trigger, source }) {
   const token = S.token, v = S.video, seq = ++chatSeq;
-  chatBusy++;
-  duck(true);
-  dlg = null;
-  const bubble = openChatBubble('찾아보는 중…'); // immediately
-  chatAdd({ who: 'user', text });
-  const line = chatAdd({ who: 'agent', text: '찾아보는 중…' });
+  if (turnCtl) turnCtl.abort();
+  agentVoice.stop();
+  const ctl = turnCtl = new AbortController();
+  turnActive = true; activity(); duck(true); dlg = null;
+  refreshCall();
+  if (trigger === 'user') chatAdd({ who: 'user', text });
+  let thinking = chatAdd({ who: 'agent', text: '…' });
+  const clearThinking = () => { if (thinking) { thinking.remove(); thinking = null; } };
+  const said = []; let allItems = []; turnBubble = null;
+  const bubbleNow = () => {
+    const t = said.join(' ').slice(-180);
+    if (!turnBubble) turnBubble = openChatBubble(t || '…');
+    else updateChatBubble(turnBubble, { text: t, items: allItems });
+  };
   try {
     if (!S.session) {
       const r = await api.session({ videoUrl: S.videoUrl, videoTitle: v.title, source: v.source, youtubeId: v.youtubeId });
@@ -402,32 +477,52 @@ async function handleUtterance(raw, source) {
     }
     const rect = S.player.contentRect();
     const gaze = sm ? { x: +Math.min(1, Math.max(0, (sm.x - rect.left) / rect.width)).toFixed(4), y: +Math.min(1, Math.max(0, (sm.y - rect.top) / rect.height)).toFixed(4) } : null;
-    const body = { sessionId: S.session, text, source, videoUrl: S.videoUrl, videoTitle: v.title, videoTime: +S.player.time().toFixed(2), gaze };
+    const body = { sessionId: S.session, text, trigger, source, videoUrl: S.videoUrl, videoTitle: v.title, videoTime: +S.player.time().toFixed(2), gaze };
     if (v.source === 'youtube') body.youtubeId = v.youtubeId;
-    const res = await api.chat(body);
-    if (token !== S.token || seq !== chatSeq) return;
-    if (res.ignored) { dismissBubble(); line.remove(); return; } // not for the agent: show nothing
-    updateChatBubble(bubble, { text: res.reply || '', items: res.items });
-    line.setText(res.reply || ''); line.setItems(res.items);
-    for (const it of res.items || []) {
-      addWish({ id: (res.captureId || 'chat' + seq) + ':' + it.name, label: it.price ? `${it.name} · ${it.price}` : it.name, category: 'product', links: [{ title: it.source || '', url: it.url }] });
-    }
-    if (res.speak && res.reply) await voice.speak(res.reply);
+    await api.turn(body, ctl.signal, (ev) => {
+      if (token !== S.token || ctl.signal.aborted || seq !== chatSeq) return;
+      if (ev.type === 'say') {
+        clearThinking(); said.push(ev.text);
+        chatAdd({ who: 'agent', text: ev.text });
+        bubbleNow(); agentVoice.enqueue(ev.text);
+      } else if (ev.type === 'tool') {
+        refreshCall(); // searching: keep "생각 중"
+      } else if (ev.type === 'items') {
+        clearThinking(); allItems = allItems.concat(ev.items || []);
+        chatAdd({ who: 'agent', text: '', items: ev.items });
+        bubbleNow();
+        for (const it of ev.items || []) {
+          addWish({ id: 'turn' + seq + ':' + it.name, label: it.price ? `${it.name} · ${it.price}` : it.name, category: 'product', links: [{ title: it.source || '', url: it.url }] });
+        }
+      } else if (ev.type === 'ignored') {
+        clearThinking(); if (turnBubble) { dismissBubble(); turnBubble = null; }
+      }
+    });
   } catch (e) {
-    if (token === S.token && seq === chatSeq) { dismissBubble(); line.setText('(대화 오류)'); toast('대화 오류: ' + e.message); }
+    if (!ctl.signal.aborted && token === S.token) toast('대화 오류: ' + e.message);
   } finally {
-    chatBusy--;
-    scheduleUnduck(chatBusy ? 4000 : 400);
+    clearThinking();
+    if (turnCtl === ctl) { turnActive = false; turnCtl = null; }
+    if (!agentVoice.speaking) scheduleUnduck(500);
+    refreshCall();
   }
 }
 
-// typing stand-in for speech (mouse / debug mode), e.g. for headless smoke tests
+// idle: nothing said, no bubble and no agent speech for 45 s while a video plays -> the agent may speak up
+setInterval(() => {
+  if (S.state !== 'watch' || !S.player || S.finished || muted || turnActive || hearing || agentVoice.speaking || bubbleActive()) return;
+  if (!S.player.isPlaying() || performance.now() - lastActivity < CONFIG.call.idleMs) return;
+  activity();
+  runTurn('', { trigger: 'idle', source: 'voice' });
+}, 5000);
+
+// typing stand-in for speech (mouse / debug mode): goes straight to the turn, skipping ASR
 if (MOUSE || DEBUG) {
   capInput.hidden = false;
   capInput.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || !capInput.value.trim()) return;
     const t = capInput.value; capInput.value = '';
-    duck(true); handleUtterance(t, 'typed');
+    handleUserText(t, 'typed');
   });
 }
 

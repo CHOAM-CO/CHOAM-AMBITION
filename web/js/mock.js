@@ -19,7 +19,35 @@ const ALTS = [
 const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><rect width="160" height="160" fill="#445"/><circle cx="80" cy="80" r="34" fill="none" stroke="#f44" stroke-width="5"/></svg>');
 const store = { n: 0, caps: [] };
 
+function wavSine(sec) { // a short beep as stand-in TTS audio
+  const sr = 16000, n = Math.floor(sr * sec), buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.sin(i / sr * 2 * Math.PI * 440) * 0.08 * 0x7fff * Math.min(1, i / 400, (n - i) / 400), true);
+  return buf;
+}
+
 export async function mockApi(method, path, body) {
+  if (path === '/api/asr') { await sleep(300); return { text: '미니멀 스탠드 조명 찾아줘', lang: 'Korean', ms: 280, totalMs: 300 }; }
+  if (path === '/api/tts') { await sleep(150); return wavSine(Math.min(2.5, 0.25 + body.text.length * 0.06)); }
+  if (method === 'STREAM' && path === '/api/voice/turn') { // NDJSON stand-in
+    const { body: b, signal, onEvent } = body;
+    const emit = async (ev, ms) => { await sleep(ms); if (signal.aborted) throw new DOMException('aborted', 'AbortError'); onEvent(ev); };
+    if (/무시/.test(b.text)) { await emit({ type: 'ignored' }, 300); await emit({ type: 'done', ms: 300 }, 10); return; }
+    if (b.trigger === 'idle') { await emit({ type: 'say', text: '조용히 보고 계시네요.' }, 400); await emit({ type: 'say', text: '궁금한 거 있으면 말씀하세요.' }, 300); await emit({ type: 'done', ms: 800 }, 10); return; }
+    const q = (b.text || '').slice(0, 20);
+    if (/찾|검색|알려/.test(b.text)) { await emit({ type: 'say', text: '잠깐만요, 찾아볼게요.' }, 600); await emit({ type: 'tool', name: 'danawa_search' }, 400); }
+    await emit({ type: 'say', text: `"${q}" 말씀이시죠?` }, 500);
+    await emit({ type: 'say', text: '이런 게 있어요.' }, 400);
+    await emit({ type: 'items', items: [
+      { name: '미니멀 스탠드 조명', price: '39,900원', url: 'https://www.google.com/search?tbm=shop&q=' + encodeURIComponent(q), source: '다나와' },
+      { name: '무드등 LED 램프', price: '24,500원', url: 'https://www.google.com/search?tbm=shop&q=' + encodeURIComponent(q + ' 무드등'), source: '다나와' },
+    ] }, 300);
+    await emit({ type: 'done', ms: 2200 }, 10);
+    return;
+  }
+
   if (path === '/api/health') return { ok: true };
 
   if (path === '/api/videos') {
