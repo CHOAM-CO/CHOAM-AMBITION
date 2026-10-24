@@ -1,6 +1,6 @@
 // Gaze normalization + (mp4 only) frame grab with a square crop around the gaze point.
 // YouTube sends no image: the server renders the frame itself from youtubeId + videoTime.
-import { CONFIG } from './events.js?v=r16';
+import { CONFIG } from './events.js?v=r17';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -31,4 +31,14 @@ export async function grab(player, gx, gy) {
   const side = CONFIG.cropRatio * Math.min(vw, vh);
   const sx = clamp(nx * vw - side / 2, 0, vw - side), sy = clamp(ny * vh - side / 2, 0, vh - side);
   return { image: encode(v, sx, sy, side, side, nx * vw, ny * vh), gaze };
+}
+
+/** whole-frame jpeg (base64, no prefix) for the scene log; YouTube sends nothing (the server renders it). */
+export function fullFrame(player) {
+  if (player.kind !== 'mp4') return null;
+  const v = player.el; if (!v.videoWidth) return null;
+  const k = Math.min(1, 768 / v.videoWidth), c = document.createElement('canvas');
+  c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.7).split(',')[1];
 }

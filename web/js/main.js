@@ -1,14 +1,14 @@
-import { api, MOCK, PARAMS } from './api.js?v=r16';
-import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r16';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r16';
-import { EyeTheiaSource } from './eyetheia.js?v=r16';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r16';
-import { grab } from './capture.js?v=r16';
-import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r16';
-import { HeadGestures } from './gesture.js?v=r16';
-import { Dwell } from './dwell.js?v=r16';
-import { Voice } from './voice.js?v=r16';
-import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r16';
+import { api, MOCK, PARAMS } from './api.js?v=r17';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r17';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r17';
+import { EyeTheiaSource } from './eyetheia.js?v=r17';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r17';
+import { grab, fullFrame } from './capture.js?v=r17';
+import { toast, addCapture, clearCaptures, renderScenes, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r17';
+import { HeadGestures } from './gesture.js?v=r17';
+import { Dwell } from './dwell.js?v=r17';
+import { Voice } from './voice.js?v=r17';
+import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r17';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -167,7 +167,7 @@ async function playVideo(v) {
   const token = S.token;
   S.video = v; S.session = null; S.labels = [];
   S.videoUrl = v.source === 'youtube' ? `https://www.youtube.com/watch?v=${v.youtubeId}` : v.url;
-  clearCaptures(); chatClear(); danmakuClear();
+  clearCaptures(); chatClear(); danmakuClear(); renderScenes([]); lastScene = 0;
   $('#watch-title').textContent = v.title;
   $('#watch-sub').textContent = v.source === 'youtube' ? 'YouTube · 시선 + 음성 + 고개 제스처로 같이 보는 중' : '샘플 영상 · 시선 + 음성 + 고개 제스처로 같이 보는 중';
   show('watch');
@@ -195,6 +195,12 @@ function setDrawer(open, ms) {
 }
 window.addEventListener('wish-added', () => setDrawer(true, 4000));
 dwell.register($('#wish-head'), () => setDrawer(drawer.classList.contains('collapsed'), 10000), { group: 'watch' });
+const sceneBox = $('#scenebox'); let sceneOpenTimer = null;
+dwell.register($('#scene-head'), () => {
+  const open = sceneBox.classList.contains('collapsed');
+  sceneBox.classList.toggle('collapsed', !open); clearTimeout(sceneOpenTimer);
+  if (open) { refreshScenes(); sceneOpenTimer = setTimeout(() => sceneBox.classList.add('collapsed'), 12000); }
+}, { group: 'watch' });
 dwell.register($('#btn-home'), goHome, { group: 'watch' });
 dwell.register($('#btn-done'), () => finish(), { group: 'watch' });
 dwell.register($('#btn-home2'), goHome, { group: 'summary' });
@@ -211,6 +217,7 @@ function goNext() { const n = nextVideo(); if (n) playVideo(n); else goHome(); }
 
 // ---------- gaze loop ----------
 const detector = new GazeEventDetector(onGazeEvent);
+detector.onScene = (ev) => sceneSnap(ev);
 const dot = $('#gaze-dot');
 const actionsEl = $('.watch-actions');
 const camEl = $('#cam');
@@ -303,6 +310,35 @@ async function doCapture(ev) {
     card.setError();
     toast('서버 오류: ' + e.message);
   }
+}
+
+// ---------- scene log: every real look-jump posts a full-frame snapshot (fire and forget, no UI beyond a tick in chat) ----------
+let lastScene = 0, sceneOff = false, sceneTimer = null;
+async function sceneSnap(ev) {
+  const p = S.player, v = S.video;
+  if (sceneOff || !p || !v || !S.session || S.state !== 'watch' || S.finished || !p.isPlaying()) return;
+  const now = performance.now();
+  if (now - lastScene < 2000) return; // the server guards at 2 s as well
+  lastScene = now;
+  const token = S.token, videoTime = +p.time().toFixed(2);
+  const rect = p.contentRect();
+  const body = { sessionId: S.session, videoTime, videoTitle: v.title, trigger: 'saccade', async: true,
+    gaze: { x: +Math.min(1, Math.max(0, (ev.x - rect.left) / rect.width)).toFixed(4), y: +Math.min(1, Math.max(0, (ev.y - rect.top) / rect.height)).toFixed(4) } };
+  if (v.source === 'youtube') body.youtubeId = v.youtubeId; else { body.image = fullFrame(p); if (!body.image) return; }
+  try {
+    const r = await api.scene(body);
+    if (token !== S.token || r.skipped) return;
+    chatAdd({ who: 'sys', text: `장면 기록 ${fmtTime(videoTime)}`, dm: false });
+    clearTimeout(sceneTimer); sceneTimer = setTimeout(refreshScenes, 6000); // the description takes a few seconds
+  } catch (e) {
+    if (e.status === 404 && !/session/i.test(JSON.stringify(e.body || {}))) sceneOff = true; // server has no /api/scene
+    else if (e.status === 404) S.session = null;
+  }
+}
+async function refreshScenes() {
+  if (!S.session || sceneOff || MOCK) return;
+  const token = S.token;
+  try { const r = await api.scenes(S.session); if (token === S.token) renderScenes(r.scenes || []); } catch {}
 }
 
 // ---------- bubble dialogue (head gestures, Y/N keys, or buttons for debugging) ----------

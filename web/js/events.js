@@ -22,6 +22,7 @@ export const CONFIG = {
     velocityWindowMs: 100,      // velocity measured over this window
     settleRadiusPx: 90,         // must stay within this radius ...
     settleMs: 300,              // ... for this long to count as landed
+    minJumpPx: 260,             // scene log: the look must have travelled at least this far (jitter and micro-saccades do not count)
     maxMoveMs: 1500,            // give up if we never settle
   },
 
@@ -117,7 +118,7 @@ export class GazeEventDetector {
   reset() {
     this.hist = [];
     this.fix = { n: 0, sx: 0, sy: 0, startT: 0, fired: false, out: 0 };
-    this.sac = { state: 'idle', moveT: 0, n: 0, sx: 0, sy: 0, ax: 0, ay: 0, startT: 0 };
+    this.sac = { state: 'idle', moveT: 0, n: 0, sx: 0, sy: 0, ax: 0, ay: 0, startT: 0, fx: 0, fy: 0 };
     this.fixProgress = 0;
   }
 
@@ -166,7 +167,7 @@ export class GazeEventDetector {
     const c = CONFIG.saccade, s = this.sac;
     const v = this._velocity(t, x, y);
     if (s.state === 'idle') {
-      if (v >= c.velocityPxPerS) { s.state = 'moving'; s.moveT = t; }
+      if (v >= c.velocityPxPerS) { s.state = 'moving'; s.moveT = t; const h0 = this.hist[0] || { x, y }; s.fx = h0.x; s.fy = h0.y; }
     } else if (s.state === 'moving') {
       if (v < c.velocityPxPerS * 0.5) this._settleStart(t, x, y);
       else if (t - s.moveT > c.maxMoveMs) s.state = 'idle';
@@ -176,7 +177,9 @@ export class GazeEventDetector {
       s.n++; s.sx += x; s.sy += y;
       if (t - s.startT >= c.settleMs) {
         s.state = 'idle';
-        this._emit('saccade', t, s.sx / s.n, s.sy / s.n, t - s.startT);
+        const lx = s.sx / s.n, ly = s.sy / s.n, jump = dist(lx, ly, s.fx, s.fy);
+        if (this.onScene && jump >= c.minJumpPx) this.onScene({ x: lx, y: ly, jump: Math.round(jump) }); // scene log: independent of the capture gates
+        this._emit('saccade', t, lx, ly, t - s.startT);
       }
     }
   }

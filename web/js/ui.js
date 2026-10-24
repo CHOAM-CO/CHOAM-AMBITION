@@ -1,5 +1,5 @@
 // DOM helpers: toasts, capture panel, agent bubble, summary.
-import { CONFIG } from './events.js?v=r16';
+import { CONFIG } from './events.js?v=r17';
 
 const $ = (s) => document.querySelector(s);
 export const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -247,4 +247,22 @@ export function renderSummary(data) {
     c.append(img, b); grid.appendChild(c);
   }
   box.appendChild(grid);
+}
+
+/** 장면 기록: chronological scene log (timestamp + summary + thumbnail) from GET /api/scene */
+export function renderScenes(scenes) {
+  const ol = $('#scenes'); if (!ol) return;
+  ol.innerHTML = '';
+  $('#scene-empty').hidden = !!scenes.length;
+  $('#scene-count').textContent = scenes.length;
+  for (const sc of scenes) {
+    const li = document.createElement('li'); li.className = 'cap scene';
+    const img = document.createElement('img'); img.alt = ''; img.src = sc.imageUrl || ''; img.onerror = () => img.classList.add('blank');
+    const m = document.createElement('div'); m.className = 'meta';
+    const t = document.createElement('span'); t.className = 'time'; t.textContent = fmtTime(sc.videoTime || 0);
+    const d = document.createElement('span'); d.className = 'sdesc';
+    d.textContent = sc.summary || (sc.objects && sc.objects.length ? sc.objects.slice(0, 4).join(', ') : '(분석 중)');
+    m.append(t, d); li.append(img, m); ol.appendChild(li);
+  }
+  const b = ol.parentElement; b.scrollTop = b.scrollHeight;
 }

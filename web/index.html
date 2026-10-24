@@ -6,7 +6,7 @@
 <title>CHOAM AMBITION</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<link rel="stylesheet" href="style.css?v=r16">
+<link rel="stylesheet" href="style.css?v=r17">
 </head>
 <body>
 <header class="top">
@@ -41,6 +41,13 @@
         <div class="wish-body">
           <p id="wish-empty" class="muted">물어볼 때 고개를 끄덕이면 여기에 담겨요.</p>
           <ol id="wish" class="captures"></ol>
+        </div>
+      </section>
+      <section id="scenebox" class="sidebox wishbox collapsed">
+        <button class="side-head" id="scene-head"><span>장면 기록</span><b id="scene-count">0</b><i class="chev"></i></button>
+        <div class="wish-body">
+          <p id="scene-empty" class="muted">시선을 크게 옮길 때마다 화면을 기록해요.</p>
+          <ol id="scenes" class="captures"></ol>
         </div>
       </section>
       <section class="sidebox">
@@ -109,6 +116,6 @@
 <div id="gaze-dot"></div><div id="gesture-badge"></div>
 <div id="hud" class="hud" hidden></div>
 <div id="toasts"></div>
-<script type="module" src="js/main.js?v=r16"></script>
+<script type="module" src="js/main.js?v=r17"></script>
 </body>
 </html>
