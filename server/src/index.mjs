@@ -9,6 +9,7 @@ import * as yt from './youtube.mjs';
 import { handleChat } from './chat.mjs';
 import { handleVoiceTurn, handleVoiceTalk } from './voice.mjs';
 import { transcribe } from './asr.mjs';
+import { handleScene, listScenes } from './scene.mjs';
 import { ttsRoute } from '../tts/index.mjs';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -191,6 +192,14 @@ async function route(req, res, url) {
     const audio = await readRaw(req);
     if (!audio.length) throw new HttpError(400, 'empty audio body');
     return handleVoiceTalk(audio, req, res, url, { HttpError });
+  }
+  if (method === 'POST' && p === '/api/scene') return send(res, 200, await handleScene(await readJson(req), { HttpError }));
+  if (method === 'GET' && p === '/api/scene') return send(res, 200, await listScenes(url.searchParams.get('sessionId'), HttpError));
+  let sm;
+  if (method === 'GET' && (sm = p.match(/^\/api\/scene\/img\/([^/]+)\/([^/]+?)\.jpg$/)) && store.validId(sm[1]) && store.validId(sm[2])) {
+    let buf; try { buf = await fsp.readFile(store.sceneJpg(sm[1], sm[2])); } catch { throw new HttpError(404, 'not found'); }
+    res.writeHead(200, { 'content-type': 'image/jpeg', 'content-length': buf.length, 'cache-control': 'public, max-age=31536000, immutable' });
+    return res.end(buf);
   }
   if (method === 'POST' && p === '/api/chat') return send(res, 200, await handleChat(await readJson(req), { HttpError }));
   if (method === 'POST' && p === '/api/feedback') return send(res, 200, await handleFeedback(await readJson(req)));

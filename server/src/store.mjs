@@ -60,3 +60,10 @@ export async function getCaptures(session) {
   const all = await Promise.all(session.captureIds.map(getCapture));
   return all.filter(Boolean);
 }
+
+// Scene log: jpeg per scene under sessions/<sid>/scenes/<sceneId>.jpg; entries live in session.scenes (capped).
+export const sceneJpg = (sid, scid) => path.join(sessionDir(sid), 'scenes', `${scid}.jpg`);
+export async function saveSceneJpeg(sid, scid, buf) {
+  await fs.mkdir(path.join(sessionDir(sid), 'scenes'), { recursive: true });
+  await fs.writeFile(sceneJpg(sid, scid), buf);
+}
