@@ -79,7 +79,7 @@ async function runTurn({ session, body, trigger, text, emit, say, isClosed, t0, 
       if (pend.kind === 'article') {
         const a = await readArticle(pend.url, 7000); // warmed when the offer was made
         const ok = !a.error;
-        emit({ type: 'play', kind: 'article', url: ok ? a.url : pend.url, title: ok ? a.title : pend.title, ...(pend.site || a.site ? { site: pend.site || a.site } : {}), ...(ok && a.summary ? { summary: a.summary } : {}), ...(a.error ? { error: a.error } : {}) });
+        emit({ type: 'play', kind: 'article', url: ok ? a.url : pend.url, title: ok ? a.title : pend.title, ...(((pend.site && !/\./.test(pend.site)) ? pend.site : (a.site || pend.site)) ? { site: (pend.site && !/\./.test(pend.site)) ? pend.site : (a.site || pend.site) } : {}), ...(ok && a.summary ? { summary: a.summary } : {}), ...(a.error ? { error: a.error } : {}) });
         const line = ok && a.summary ? `기사 요약하면 ${a.summary}` : '네, 기사 열어드릴게요.';
         splitSentences(line, true)[0].forEach(sayAll);
         await clearOffer(); await recordTurn(session, body, text, line, []);
