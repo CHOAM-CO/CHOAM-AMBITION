@@ -1,5 +1,5 @@
 // DOM helpers: toasts, capture panel, agent bubble, summary.
-import { CONFIG } from './events.js?v=r19';
+import { CONFIG } from './events.js?v=r20';
 
 const $ = (s) => document.querySelector(s);
 export const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -164,7 +164,7 @@ export function addWish({ id, thumb, label, category, links }) {
 export function alertPop({ text }) { danmaku(text, 'agent', { transient: true }); }
 
 // live hand-gesture indicator next to the agent cam: emoji + name, ring fills while a held gesture is being held
-const HAND = { Thumb_Up: ['👍', '좋아요'], Thumb_Down: ['👎', '별로'], Open_Palm: ['✋', '멈춤/재생'], Pointing_Up: ['☝️', '이거'], Victory: ['✌️', '다음'], Closed_Fist: ['✊', '주먹'], ILoveYou: ['🤟', '사랑해'] };
+const HAND = { Thumb_Up: ['👍', '좋아요'], Thumb_Down: ['👎', '별로'], Open_Palm: ['✋', '멈춤/재생'], Pointing_Up: ['☝️', '이거'], Victory: ['✌️', '다음'], Closed_Fist: ['✊', '음소거'], ILoveYou: ['🤟', '사랑해'] };
 let handTimer = null;
 export function handShow(name, progress = 0, mapped = true, hideMs = 450) {
   const el = $('#hand-ind'); if (!el) return;

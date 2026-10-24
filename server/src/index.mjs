@@ -106,7 +106,7 @@ async function handleCapture(body) {
 
   // 2) vision
   let v = null;
-  const contentCtx = `${nowLine(body.videoTime)}\n영상 맥락:\n${ytId ? contentBlock(pack, num(body.videoTime)) : '(메타데이터 없음)'}${session.videoTitle ? `\n영상 제목: ${session.videoTitle}` : ''}`;
+  const contentCtx = `${nowLine(body.videoTime, body.micMuted === true)}\n영상 맥락:\n${ytId ? contentBlock(pack, num(body.videoTime)) : '(메타데이터 없음)'}${session.videoTitle ? `\n영상 제목: ${session.videoTitle}` : ''}`;
   try { v = await analyzeCrop(jpeg, session.labels || [], { contentCtx, fullJpeg }); } catch (e) { meta.visionError = String(e.message || e).slice(0, 300); log('vision error', captureId, meta.visionError); }
   if (v) {
     meta.item = v.label ? { label: v.label, category: v.category, description: v.description } : null;

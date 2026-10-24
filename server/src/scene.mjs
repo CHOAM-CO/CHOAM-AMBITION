@@ -123,12 +123,12 @@ export function ago(iso, now = Date.now()) {
 export const vpos = (sec) => { const t = Math.max(0, Math.round(Number(sec) || 0)); const m = Math.floor(t / 60), r = t % 60; return m ? (r ? `${m}분 ${r}초` : `${m}분`) : `${r}초`; };
 const stamp = (iso, vt, now) => `[${kstHms(iso)} 실제시각 (${ago(iso, now)}) | 영상 ${vt == null ? '알 수 없음' : vpos(vt)}]`;
 
-export function nowLine(videoTime) {
+export function nowLine(videoTime, micMuted = false) {
   const d = new Date();
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: false }).formatToParts(d).map((x) => [x.type, x.value]));
   const h = Number(p.hour) % 24, mi = Number(p.minute), se = Number(p.second);
   const ampm = h < 12 ? '오전' : '오후', h12 = h % 12 === 0 ? 12 : h % 12;
-  return `현재 시각: ${ampm} ${h12}시 ${String(mi).padStart(2, '0')}분 ${String(se).padStart(2, '0')}초 (${KST.format(d)} KST, 24시간제 ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')})\n현재 영상 위치: ${vpos(videoTime)}`;
+  return `현재 시각: ${ampm} ${h12}시 ${String(mi).padStart(2, '0')}분 ${String(se).padStart(2, '0')}초 (${KST.format(d)} KST, 24시간제 ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')})\n현재 영상 위치: ${vpos(videoTime)}${micMuted ? '\n사용자 마이크: 꺼짐 (사용자가 주먹으로 음소거함. 음성 대답 불가 — 질문/제안은 엄지(👍/👎)나 고개 끄덕임으로 답할 수 있게 "…보실래요? 👍로 알려주세요"처럼 묻고, 말로 답하라고 하지 말 것)' : ''}`;
 }
 
 // One chronological timeline (oldest -> newest, last `limit`): scene log + gaze captures + yes/no feedback.

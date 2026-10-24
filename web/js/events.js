@@ -61,7 +61,7 @@ export const CONFIG = {
   },
 
   // hand gestures (MediaPipe GestureRecognizer): Thumb_Up=yes, Thumb_Down=no, Open_Palm=pause/resume, Pointing_Up=capture here, Victory=next video
-  hands: { fps: 15, minScore: 0.6, holdMs: 450, cooldownMs: 1500 },
+  hands: { fps: 15, minScore: 0.6, holdMs: 450, fistHoldMs: 700, cooldownMs: 1500 },
 
   // facial expressions (blendshape scores 0..1; thresholds are guesses, tune live with ?debug=1 and window.AMBITION_CONFIG.expression)
   expression: {

@@ -1,10 +1,11 @@
 // Hand gestures: MediaPipe GestureRecognizer (canned gestures) on the same camera video, throttled (~10 fps).
 // Thumb_Up / Thumb_Down fire at once; Open_Palm / Pointing_Up / Victory must be held CONFIG.hands.holdMs.
-import { CONFIG } from './events.js?v=r19';
+import { CONFIG } from './events.js?v=r20';
 
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task';
 const INSTANT = new Set(['Thumb_Up', 'Thumb_Down']);
-const HELD = new Set(['Open_Palm', 'Pointing_Up', 'Victory']); // Closed_Fist is recognized but unmapped
+const HELD = new Set(['Open_Palm', 'Pointing_Up', 'Victory', 'Closed_Fist']); // Closed_Fist = mic mute toggle (longer hold)
+const holdOf = (name, c) => (name === 'Closed_Fist' ? c.fistHoldMs : c.holdMs);
 
 export class HandGestures {
   /** @param {(name:string)=>void} onGesture  name is the MediaPipe category, e.g. 'Thumb_Up' */
@@ -32,11 +33,11 @@ export class HandGestures {
     } catch { return; }
     this.cur = name ? `${name} ${score.toFixed(2)}` : '';
     const ok = name && score >= c.minScore;
-    if (this.onFeedback) this.onFeedback(ok ? { name, score, progress: now - (this.fired.get(name) || -1e9) < c.cooldownMs ? 1 : HELD.has(name) && name === this.label ? Math.min(1, (now - this.since) / c.holdMs) : INSTANT.has(name) ? 1 : 0, mapped: INSTANT.has(name) || HELD.has(name) } : null);
+    if (this.onFeedback) this.onFeedback(ok ? { name, score, progress: now - (this.fired.get(name) || -1e9) < c.cooldownMs ? 1 : HELD.has(name) && name === this.label ? Math.min(1, (now - this.since) / holdOf(name, c)) : INSTANT.has(name) ? 1 : 0, mapped: INSTANT.has(name) || HELD.has(name) } : null);
     if (!name || score < c.minScore || !(INSTANT.has(name) || HELD.has(name))) { this.label = null; return; }
     if (name !== this.label) { this.label = name; this.since = now; }
     if (now - (this.fired.get(name) || -1e9) < c.cooldownMs) return;
-    if (INSTANT.has(name) || now - this.since >= c.holdMs) {
+    if (INSTANT.has(name) || now - this.since >= holdOf(name, c)) {
       this.fired.set(name, now);
       this.label = null; // must drop and re-show to fire again
       this.onGesture(name);

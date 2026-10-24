@@ -256,3 +256,4 @@ body:not(.debug) #webgazerVideoContainer { display:none !important; }
 .expr-chip { font-size:12px; font-weight:700; color:var(--text); border:1px solid rgba(255,255,255,.2); border-radius:10px; padding:0 8px; line-height:18px; }
 .expr-chip:empty { display:none; }
 .landing .tagline { margin:6px 0 20px; font-size:18px; font-weight:600; color:var(--sub); }
+.chip.mic-muted { color:#ff8a8a; border-color:rgba(255,138,138,.55); }
