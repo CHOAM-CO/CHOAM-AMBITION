@@ -73,3 +73,4 @@ body.grabbing #gaze-dot { visibility:hidden; }
 #toasts { position:fixed; right:16px; bottom:16px; z-index:200; display:grid; gap:8px; }
 .toast { background:#2a1f1f; border:1px solid #6b3030; color:#ffd7d7; padding:8px 12px; border-radius:8px; font-size:13px; max-width:340px; }
 @media (max-width:800px) { .watch { flex-direction:column; height:auto; } .panel { width:auto; } }
+.calib-skip { position:absolute; bottom:40px; left:50%; transform:translateX(-50%); }

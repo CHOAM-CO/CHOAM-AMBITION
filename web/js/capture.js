@@ -18,11 +18,18 @@ export const hasDisplayCapture = () => !!display;
 const raf = () => new Promise((r) => requestAnimationFrame(r));
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-function encode(src, sx, sy, sw, sh) {
+// gx, gy: gaze point in source-pixel coords; a red ring is drawn there so the vision model sees it
+function encode(src, sx, sy, sw, sh, gx, gy) {
   const out = Math.round(Math.min(sw, sh, CONFIG.maxCropPx));
   const c = document.createElement('canvas');
   c.width = c.height = Math.max(1, out);
-  c.getContext('2d').drawImage(src, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  const ctx = c.getContext('2d');
+  ctx.drawImage(src, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  ctx.strokeStyle = CONFIG.ringColor;
+  ctx.lineWidth = Math.max(3, c.width * 0.012);
+  ctx.beginPath();
+  ctx.arc((gx - sx) / sw * c.width, (gy - sy) / sh * c.height, c.width * 0.09, 0, Math.PI * 2);
+  ctx.stroke();
   return c.toDataURL('image/jpeg', CONFIG.jpegQuality);
 }
 
@@ -38,7 +45,7 @@ export async function grab(player, gx, gy) {
     if (!vw) throw new Error('video not ready');
     const side = CONFIG.cropRatio * Math.min(vw, vh);
     const sx = clamp(nx * vw - side / 2, 0, vw - side), sy = clamp(ny * vh - side / 2, 0, vh - side);
-    return { image: encode(v, sx, sy, side, side), gaze };
+    return { image: encode(v, sx, sy, side, side, nx * vw, ny * vh), gaze };
   }
 
   if (!display) throw new Error('화면 공유가 꺼져 있어요');
@@ -49,7 +56,7 @@ export async function grab(player, gx, gy) {
     const sideCss = CONFIG.cropRatio * Math.min(rect.width, rect.height);
     const cx = clamp(gx, rect.left + sideCss / 2, rect.left + rect.width - sideCss / 2);
     const cy = clamp(gy, rect.top + sideCss / 2, rect.top + rect.height - sideCss / 2);
-    return { image: encode(dv, (cx - sideCss / 2) * kx, (cy - sideCss / 2) * ky, sideCss * kx, sideCss * ky), gaze };
+    return { image: encode(dv, (cx - sideCss / 2) * kx, (cy - sideCss / 2) * ky, sideCss * kx, sideCss * ky, gx * kx, gy * ky), gaze };
   } finally {
     document.body.classList.remove('grabbing');
   }

@@ -52,12 +52,12 @@ export class WebGazerSource {
 
 /** Runs the 9-point calibration + accuracy check. Resolves when the user accepts. */
 export async function runCalibration(root, source, getGaze) {
-  const CLICKS = 5;
-  const pts = [[10, 10], [50, 10], [90, 10], [10, 50], [50, 50], [90, 50], [10, 90], [50, 90], [90, 90]];
+  const CLICKS = 3;
+  const pts = [[12, 14], [88, 14], [50, 50], [12, 86], [88, 86]]; // 4 corners inset + center
   for (;;) {
     source.clear && source.clear();
     root.hidden = false;
-    root.innerHTML = '<p class="calib-msg">화면의 점을 눈으로 보면서 각 점을 5번씩 클릭해 주세요</p><div class="calib-field"></div>';
+    root.innerHTML = '<p class="calib-msg">화면의 점을 눈으로 보면서 각 점을 3번씩 클릭해 주세요</p><div class="calib-field"></div>';
     const field = root.querySelector('.calib-field');
     await new Promise((resolve) => {
       let left = pts.length;
@@ -75,17 +75,20 @@ export async function runCalibration(root, source, getGaze) {
     source.freeze && source.freeze();
 
     // accuracy check
-    root.innerHTML = '<p class="calib-msg">정확도 확인 중이에요. 나타나는 점을 계속 봐 주세요</p><div class="calib-field"></div>';
+    root.innerHTML = '<p class="calib-msg">정확도 확인 중이에요. 나타나는 점을 계속 봐 주세요</p><div class="calib-field"></div><button class="btn calib-skip">건너뛰기</button>';
+    let skipped = false;
+    root.querySelector('.calib-skip').onclick = () => { skipped = true; };
     const f2 = root.querySelector('.calib-field');
-    const checks = [[50, 50], [25, 25], [75, 25], [25, 75], [75, 75]];
+    const checks = [[50, 50], [25, 30], [75, 70]];
     const errs = [];
     for (const [px, py] of checks) {
+      if (skipped) break;
       const d = document.createElement('div');
       d.className = 'calib-pt check'; d.style.left = px + '%'; d.style.top = py + '%'; f2.appendChild(d);
       const tx = innerWidth * px / 100, ty = innerHeight * py / 100;
       const ds = [];
       const t0 = performance.now();
-      while (performance.now() - t0 < 1800) {
+      while (!skipped && performance.now() - t0 < 1800) {
         await new Promise((r) => setTimeout(r, 33));
         const g = getGaze();
         if (g && performance.now() - t0 > 700) ds.push(Math.hypot(g.x - tx, g.y - ty));
@@ -93,6 +96,7 @@ export async function runCalibration(root, source, getGaze) {
       d.remove();
       if (ds.length) { ds.sort((a, b) => a - b); errs.push(ds[Math.floor(ds.length / 2)]); }
     }
+    if (skipped) break;
     const err = errs.length ? errs.reduce((a, b) => a + b, 0) / errs.length : NaN;
     const score = isNaN(err) ? 0 : Math.max(0, Math.round(100 - (err / (innerHeight * 0.35)) * 100));
     const verdict = score >= 70 ? '좋아요' : score >= 45 ? '쓸 만해요' : '낮아요, 다시 보정을 추천해요';

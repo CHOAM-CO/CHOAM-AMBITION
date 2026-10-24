@@ -4,32 +4,35 @@
 export const CONFIG = {
   // pipeline
   sampleHz: 30,                 // gaze is sampled/smoothed at this rate
-  smoothingAlpha: 0.35,         // EMA factor for webcam gaze (lower = smoother, laggier)
-  smoothingAlphaMouse: 0.6,     // EMA factor for ?gaze=mouse
+  medianWindow: 8,              // webcam gaze: per-axis median of the last N samples, then EMA
+  smoothingAlpha: 0.15,         // EMA factor after the median (lower = smoother, laggier)
+  medianWindowMouse: 1,         // ?gaze=mouse: no median
+  smoothingAlphaMouse: 0.6,     // ?gaze=mouse EMA factor
 
   // fixation: gaze stays within radius for >= minDurationMs -> one capture
   fixation: {
-    radiusPx: 90,               // dispersion radius around running centroid
+    radiusPx: 130,              // dispersion radius around running centroid
     minDurationMs: 1000,
     outlierTolerance: 3,        // consecutive out-of-radius samples before the fixation restarts
   },
 
   // saccade: velocity spike, then settle at the landing point
   saccade: {
-    velocityPxPerS: 1400,       // spike threshold (smoothed gaze)
+    velocityPxPerS: 900,        // spike threshold (heavily smoothed gaze)
     velocityWindowMs: 100,      // velocity measured over this window
-    settleRadiusPx: 60,         // must stay within this radius ...
+    settleRadiusPx: 90,         // must stay within this radius ...
     settleMs: 300,              // ... for this long to count as landed
     maxMoveMs: 1500,            // give up if we never settle
   },
 
   // capture gating
-  dedupeRadiusPx: 110,          // skip a capture if close to the previous one ...
+  dedupeRadiusPx: 150,          // skip a capture if close to the previous one ...
   dedupeWithinMs: 3000,         // ... and this recent (fixation right after its own saccade landing)
   minGapMs: 700,                // global cooldown between captures
 
   // image
-  cropRatio: 0.30,              // square side = ratio * short side of the video frame
+  cropRatio: 0.55,              // square side = ratio * short side of the video frame (clamped inside the frame)
+  ringColor: 'rgba(255, 40, 40, 0.7)', // gaze ring drawn on the crop (not filled)
   jpegQuality: 0.8,
   maxCropPx: 512,               // downscale crops larger than this
 

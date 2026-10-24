@@ -11,6 +11,7 @@ const DEBUG = PARAMS.get('debug') === '1';
 
 const S = { video: null, player: null, session: null, source: null, tick: null, finished: false, caps: 0 };
 let sm = null; // smoothed gaze {x,y}
+let win = []; // recent raw samples for the median
 
 // ---------- picker ----------
 async function loadVideos() {
@@ -113,9 +114,13 @@ function startTick() {
 function tick() {
   const raw = S.source && S.source.latest();
   const now = performance.now();
-  if (!raw) { sm = null; dot.style.opacity = 0; detector.reset(); return; }
-  const a = S.source.mode === 'mouse' ? CONFIG.smoothingAlphaMouse : CONFIG.smoothingAlpha;
-  sm = sm ? { x: sm.x + a * (raw.x - sm.x), y: sm.y + a * (raw.y - sm.y) } : { x: raw.x, y: raw.y };
+  if (!raw) { sm = null; win = []; dot.style.opacity = 0; detector.reset(); return; }
+  const mouse = S.source.mode === 'mouse';
+  const a = mouse ? CONFIG.smoothingAlphaMouse : CONFIG.smoothingAlpha;
+  win.push(raw); if (win.length > (mouse ? CONFIG.medianWindowMouse : CONFIG.medianWindow)) win.shift();
+  const med = (k) => { const v = win.map((p) => p[k]).sort((m, n) => m - n); return v[v.length >> 1]; };
+  const mx = med('x'), my = med('y');
+  sm = sm ? { x: sm.x + a * (mx - sm.x), y: sm.y + a * (my - sm.y) } : { x: mx, y: my };
   dot.style.opacity = 1;
   dot.style.transform = `translate(${sm.x}px, ${sm.y}px)`;
 
