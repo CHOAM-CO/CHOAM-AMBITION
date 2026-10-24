@@ -43,9 +43,10 @@ Answer with ONE JSON object only, no prose:
  "isProduct": true only if it is a clear, individually buyable consumer product (bag, shoes, watch, clothing, gadget...). false for people, scenery, food being eaten, built-in furniture, text, blur, or when nothing buyable is plausible,
  "confidence": 0..1 that label/isProduct are right,
  "query": short Korean shopping search query, 2-4 words, generic type + one key attribute (colour/material); add brand/model only if clearly readable; null if not a product,
- "say": natural Korean polite speech (해요체), ONE sentence, offering to look it up, e.g. "방금 그 갈색 가죽 토트백 눈여겨 보신 것 같은데, 찾아볼까요?"; null if not a product
+ "say": natural Korean polite speech (해요체) phrased as a YES/NO QUESTION the viewer can answer with a head nod, confirming the product and offering to look it up, e.g. "방금 그 빨간 서류가방 보신 거 맞죠? 찾아볼까요?"; null if not a product,
+ "alternatives": array of up to 2 OTHER plausible buyable products visible in the crop (different objects from "label"), most likely first; [] if none. Each: {"label": Korean noun phrase, "category": Korean category word, "query": short Korean shopping query (2-4 words), "say": a soft-retreat yes/no question that starts with "아 이거 아닌가요...? " and then offers this product, e.g. "아 이거 아닌가요...? 그럼 옆에 갈색 구두요?"}
 }
-LABEL CONSISTENCY: you may be given labels already used earlier in this session. If the product is the same object/type as one of them, reuse that label EXACTLY (character for character). Only invent a new label for a genuinely different product.`;
+LABEL CONSISTENCY (applies to "label" and every alternative): you may be given labels already used earlier in this session. If a product is the same object/type as one of them, reuse that label EXACTLY (character for character). Only invent a new label for a genuinely different product.`;
 
 
 export async function analyzeCrop(jpegBuf, knownLabels = []) {
@@ -62,7 +63,7 @@ export async function analyzeCrop(jpegBuf, knownLabels = []) {
       ],
     }],
   };
-  const res = await completeSimple(visionModel, context, { apiKey: config.apiKey, maxTokens: 400, onPayload: visionPayload });
+  const res = await completeSimple(visionModel, context, { apiKey: config.apiKey, maxTokens: 700, onPayload: visionPayload });
   if (res.stopReason === 'error') throw new Error(res.errorMessage || 'vision call failed');
   const j = parseJson(textOf(res));
   let label = j.label ? String(j.label).trim() : null;
@@ -70,7 +71,22 @@ export async function analyzeCrop(jpegBuf, knownLabels = []) {
   const known = label && knownLabels.find((k) => normLabel(k) === normLabel(label));
   if (known) label = known;
   const isProduct = !!(label && j.isProduct === true);
+  const canon = (l) => { const t = String(l).trim(); return knownLabels.find((k) => normLabel(k) === normLabel(t)) || t; };
+  const seen = new Set(isProduct ? [normLabel(label)] : []);
+  const alternatives = [];
+  for (const a of Array.isArray(j.alternatives) ? j.alternatives : []) {
+    if (!a || !a.label || !a.query) continue;
+    const l = canon(a.label);
+    if (seen.has(normLabel(l))) continue;
+    seen.add(normLabel(l));
+    alternatives.push({
+      label: l, category: a.category ? String(a.category) : null, query: String(a.query),
+      say: /^아 이거 아닌가요/.test(a.say || '') ? String(a.say) : `아 이거 아닌가요...? 그럼 ${l}요?`,
+    });
+    if (alternatives.length >= 2) break;
+  }
   return {
+    alternatives,
     label: isProduct ? label : null,
     category: isProduct && j.category ? String(j.category) : null,
     description: isProduct && j.description ? String(j.description) : null,
@@ -89,24 +105,44 @@ export const shopLinks = (q) => q ? [
 
 // ---- Summary agent -------------------------------------------------------------------------
 
-function aggregate(captures) {
-  const groups = new Map();
+// Turn captures into per-product entries: the main item plus any alternative the viewer confirmed with "yes".
+// Labels the viewer answered "no" are dropped; "yes" labels are flagged for boosting.
+function expandEntries(captures, feedback = {}) {
+  const out = [];
   for (const c of captures) {
-    if (!c.item || !c.isProduct) continue;
+    const cands = [];
+    if (c.item && c.isProduct) cands.push({ label: c.item.label, category: c.item.category, query: c.query });
+    for (const a of c.alternatives || []) if (feedback[normLabel(a.label)]?.answer === 'yes') cands.push({ label: a.label, category: a.category, query: a.query });
+    for (const k of cands) {
+      const ans = feedback[normLabel(k.label)]?.answer || null;
+      if (ans === 'no') continue;
+      out.push({ captureId: c.captureId, imageUrl: c.imageUrl, videoTime: c.videoTime, kind: c.kind, dwellMs: c.dwellMs,
+        item: { label: k.label, category: k.category }, isProduct: true, query: k.query, answer: ans });
+    }
+  }
+  return out;
+}
+
+function aggregate(entries) {
+  const groups = new Map();
+  for (const c of entries) {
     const key = normLabel(c.item.label);
-    const g = groups.get(key) || { label: c.item.label, category: c.item.category, query: c.query, captureCount: 0, totalDwellMs: 0, maxDwellMs: 0, bestCaptureId: c.captureId, firstVideoTime: c.videoTime, lastVideoTime: c.videoTime, captureIds: [] };
+    const g = groups.get(key) || { label: c.item.label, category: c.item.category, query: c.query, userAnswer: null, captureCount: 0, totalDwellMs: 0, maxDwellMs: 0, bestCaptureId: c.captureId, firstVideoTime: c.videoTime, lastVideoTime: c.videoTime, captureIds: [] };
+    if (c.answer === 'yes') g.userAnswer = 'yes';
     g.captureCount++; g.totalDwellMs += c.dwellMs || 0;
     if ((c.dwellMs || 0) >= g.maxDwellMs) { g.maxDwellMs = c.dwellMs || 0; g.bestCaptureId = c.captureId; }
     g.firstVideoTime = Math.min(g.firstVideoTime, c.videoTime); g.lastVideoTime = Math.max(g.lastVideoTime, c.videoTime);
     g.captureIds.push(c.captureId);
     groups.set(key, g);
   }
-  return [...groups.values()].sort((a, b) => b.totalDwellMs - a.totalDwellMs);
+  // confirmed-by-nod products first, then by total dwell
+  return [...groups.values()].sort((a, b) => (b.userAnswer === 'yes') - (a.userAnswer === 'yes') || b.totalDwellMs - a.totalDwellMs);
 }
 
 export async function summarize(session, captures) {
-  const byId = new Map(captures.map((c) => [c.captureId, c]));
-  const groups = aggregate(captures);
+  const entries = expandEntries(captures, session.feedback || {});
+  const lookup = (id, label) => entries.find((e) => e.captureId === id && normLabel(e.item.label) === normLabel(label)) || entries.find((e) => e.captureId === id);
+  const groups = aggregate(entries);
   const link = (c) => ({
     captureId: c.captureId, imageUrl: c.imageUrl, videoTime: c.videoTime,
     label: c.item?.label ?? null, links: shopLinks(c.query),
@@ -122,16 +158,16 @@ export async function summarize(session, captures) {
       description: 'List every gaze capture of this viewing session (chronological) with identified object, dwell time in ms and video time in seconds.',
       parameters: Type.Object({}),
       execute: async () => ({
-        content: [{ type: 'text', text: JSON.stringify(captures.map((c) => ({
+        content: [{ type: 'text', text: JSON.stringify(entries.map((c) => ({
           captureId: c.captureId, videoTime: c.videoTime, kind: c.kind, dwellMs: c.dwellMs,
-          label: c.item?.label ?? null, isProduct: !!c.isProduct, category: c.item?.category ?? null, query: c.query,
+          label: c.item.label, category: c.item.category, query: c.query, userAnswer: c.answer,
         }))) }],
         details: {},
       }),
     },
     {
       name: 'aggregate_by_label', label: 'Aggregate by label',
-      description: 'Group product captures by object label: capture count (repeat looks), total/max dwell ms, best capture id. Sorted by total dwell.',
+      description: 'Group product captures by object label: capture count (repeat looks), total/max dwell ms, best capture id, userAnswer ("yes" = viewer confirmed by nodding). Sorted with viewer-confirmed products first, then by total dwell. Products the viewer rejected are already removed.',
       parameters: Type.Object({}),
       execute: async () => ({ content: [{ type: 'text', text: JSON.stringify(groups) }], details: {} }),
     },
@@ -153,7 +189,7 @@ export async function summarize(session, captures) {
   const agent = new Agent({
     initialState: {
       systemPrompt: `You are a shopping assistant reviewing what a viewer's eyes lingered on while watching a video.
-Use the tools to review the session's captures, weigh longer dwell and repeated looks at the same product (same label across captures) as stronger interest, ignore non-products and near-duplicates, then call submit_recommendations once with the top 3-5 distinct products. Each reason is one natural Korean polite sentence mentioning the evidence (e.g. 몇 초 동안 / 여러 번 다시 봤어요). Use the capture with the longest dwell as captureId.`,
+Use the tools to review the session's captures, weigh longer dwell and repeated looks at the same product (same label across captures) as stronger interest, ignore non-products and near-duplicates, then call submit_recommendations once with the top 3-5 distinct products. Each reason is one natural Korean polite sentence mentioning the evidence (e.g. 몇 초 동안 / 여러 번 다시 봤어요). Products with userAnswer \"yes\" were explicitly confirmed by the viewer (nod): rank them above unconfirmed ones. Products the viewer rejected are already excluded. Use the capture with the longest dwell as captureId.`,
       model: summaryModel, tools, messages: [],
     },
     getApiKey: () => config.apiKey,
@@ -162,18 +198,19 @@ Use the tools to review the session's captures, weigh longer dwell and repeated 
   await agent.prompt(`Session "${session.videoTitle || session.videoUrl}" has ${captures.length} captures. Review them and submit the recommendations.`);
   const err = agent.state.errorMessage;
 
-  // Validate agent output against real captures; fall back to dwell ranking if the agent failed.
+  // Validate agent output against real entries; fall back to confirmed-then-dwell ranking if the agent failed.
+  const rejected = (l) => (session.feedback || {})[normLabel(l)]?.answer === 'no';
   let recs = [];
   if (submitted) {
     for (const r of submitted.recommendations || []) {
-      const c = byId.get(r.captureId);
-      if (c && !recs.some((x) => x.captureId === c.captureId)) recs.push({ ...link(c), label: r.label || c.item?.label, reason: r.reason });
+      const c = lookup(r.captureId, r.label);
+      if (c && !rejected(c.item.label) && !recs.some((x) => normLabel(x.label) === normLabel(c.item.label))) recs.push({ ...link(c), reason: r.reason });
     }
   }
   if (!recs.length) {
     recs = groups.slice(0, 5).map((g) => {
-      const c = byId.get(g.bestCaptureId);
-      return { ...link(c), reason: `${Math.round(g.totalDwellMs / 1000)}초 동안 ${g.captureCount}번 보셨어요.` };
+      const c = lookup(g.bestCaptureId, g.label);
+      return { ...link(c), reason: g.userAnswer === 'yes' ? '고개를 끄덕이며 맞다고 하셨던 상품이에요.' : `${Math.round(g.totalDwellMs / 1000)}초 동안 ${g.captureCount}번 보셨어요.` };
     });
     return { say: '눈여겨보신 상품들을 정리해 봤어요.', recommendations: recs, fallback: true, error: err || 'agent returned nothing' };
   }

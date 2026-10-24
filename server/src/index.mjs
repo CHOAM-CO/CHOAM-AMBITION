@@ -55,7 +55,7 @@ async function handleCapture(body) {
     capturedAt: body.capturedAt ?? new Date().toISOString(), receivedAt: new Date().toISOString(),
     kind: body.kind === 'saccade' ? 'saccade' : 'fixation', dwellMs: num(body.dwellMs),
     gaze: { x: num(body.gaze?.x), y: num(body.gaze?.y) }, imageUrl: imageUrl(session.id, captureId),
-    bytes: jpeg.length, item: null, isProduct: false, confidence: 0, query: null,
+    bytes: jpeg.length, alternatives: [], item: null, isProduct: false, confidence: 0, query: null,
   };
   // 1) persist image + metadata first, so a vision failure never loses the capture
   await store.saveCapture(meta, jpeg);
@@ -72,6 +72,7 @@ async function handleCapture(body) {
     meta.item = v.label ? { label: v.label, category: v.category, description: v.description } : null;
     meta.isProduct = !!(v.label && v.isProduct);
     meta.confidence = v.confidence; meta.query = meta.isProduct ? v.query : null;
+    meta.alternatives = v.alternatives;
     meta.usage = v.usage ? { input: v.usage.input, output: v.usage.output } : undefined;
   }
 
@@ -80,7 +81,9 @@ async function handleCapture(body) {
   await store.withSession(session.id, async () => {
     const s = await store.getSession(session.id);
     const key = normLabel(meta.item?.label);
-    if (meta.isProduct && !(s.labels || (s.labels = [])).some((l) => normLabel(l) === key)) s.labels.push(meta.item.label);
+    const addLabel = (l) => { if (!(s.labels || (s.labels = [])).some((x) => normLabel(x) === normLabel(l))) s.labels.push(l); };
+    if (meta.isProduct) addLabel(meta.item.label);
+    for (const a of meta.alternatives) addLabel(a.label);
     const clear = meta.isProduct && meta.query && v?.say && meta.confidence >= 0.6;
     if (clear && Date.now() - (s.lastSpokenAt || 0) >= config.speakCooldownMs && !s.spoken.includes(key)) {
       speak = true; s.lastSpokenAt = Date.now(); s.spoken.push(key);
@@ -95,7 +98,29 @@ async function handleCapture(body) {
   return {
     captureId, imageUrl: meta.imageUrl, item: meta.item, speak, say: meta.say,
     query: meta.query, links: shopLinks(meta.query),
+    alternatives: meta.alternatives.map((a) => ({ label: a.label, category: a.category, query: a.query, say: a.say, links: shopLinks(a.query) })),
   };
+}
+
+async function handleFeedback(body) {
+  const session = await store.getSession(body.sessionId);
+  if (!session) throw new HttpError(404, 'unknown sessionId');
+  if (body.answer !== 'yes' && body.answer !== 'no') throw new HttpError(400, 'answer must be "yes" or "no"');
+  if (typeof body.label !== 'string' || !body.label.trim()) throw new HttpError(400, 'label required');
+  const cap = await store.getCapture(body.captureId);
+  if (!cap || cap.sessionId !== session.id) throw new HttpError(404, 'unknown captureId');
+  const at = new Date().toISOString();
+  // capture file is only written by the capture handler and this handler; serialize per session
+  await store.withSession(session.id, async () => {
+    const c = await store.getCapture(cap.captureId);
+    (c.feedback || (c.feedback = [])).push({ label: body.label, answer: body.answer, at });
+    await store.updateCapture(c);
+    const s = await store.getSession(session.id);
+    (s.feedback || (s.feedback = {}))[normLabel(body.label)] = { label: body.label, answer: body.answer, captureId: cap.captureId, at };
+    await store.saveSession(s);
+  });
+  log('feedback', cap.captureId, body.label, body.answer);
+  return { ok: true };
 }
 
 async function handleSummary(body) {
@@ -117,6 +142,7 @@ async function route(req, res, url) {
     return send(res, 200, { sessionId: s.id });
   }
   if (method === 'POST' && p === '/api/capture') return send(res, 200, await handleCapture(await readJson(req)));
+  if (method === 'POST' && p === '/api/feedback') return send(res, 200, await handleFeedback(await readJson(req)));
   if (method === 'POST' && p === '/api/summary') return send(res, 200, await handleSummary(await readJson(req)));
   let m;
   if (method === 'GET' && (m = p.match(/^\/api\/session\/([^/]+)$/))) {
