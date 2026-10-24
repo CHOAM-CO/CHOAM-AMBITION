@@ -55,7 +55,8 @@ export const CONFIG = {
   // EyeTheia tracker (default; ?tracker=webgazer for the old path; ?model=baseline, ?margin=px, ?models=<base url>)
   eyetheia: {
     modelBase: '/media/models/',
-    smoothing: { window: 3, alpha: 0.4 }, // main-loop median window + EMA on top of the One Euro filter
+    // live-tunable (window.AMBITION_CONFIG.eyetheia.smoothing). One Euro runs in the source; the median + EMA + dead-zone in the main loop.
+    smoothing: { minCutoff: 0.4, beta: 0.005, window: 6, alpha: 0.2, deadzonePx: 25 },
   },
 
   // gaze-dwell buttons (home cards, watch/summary controls)
@@ -72,6 +73,28 @@ export const CONFIG = {
 if (typeof window !== 'undefined') window.AMBITION_CONFIG = CONFIG; // tweak live from the console
 
 const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+
+/** median of the last `window` samples -> EMA -> dead-zone for the displayed point.
+ *  `cfg` is read on every push ({window, alpha, deadzonePx}), so it is live-tunable.
+ *  .x/.y = smoothed signal (events + dwell read this); .shownX/.shownY = what the dot draws. */
+export class GazeSmoother {
+  constructor() { this.reset(); }
+  reset() { this.win = []; this.x = this.y = this.shownX = this.shownY = null; }
+  push(raw, cfg) {
+    this.win.push(raw);
+    while (this.win.length > Math.max(1, cfg.window)) this.win.shift();
+    const med = (k) => { const v = this.win.map((p) => p[k]).sort((m, n) => m - n); return v[v.length >> 1]; };
+    const mx = med('x'), my = med('y');
+    if (this.x == null) { this.x = mx; this.y = my; this.shownX = mx; this.shownY = my; return this; }
+    this.x += cfg.alpha * (mx - this.x); this.y += cfg.alpha * (my - this.y);
+    const dz = cfg.deadzonePx || 0, d = dist(this.x, this.y, this.shownX, this.shownY);
+    if (d > dz) { // trail the smoothed point at the dead-zone edge instead of snapping
+      this.shownX = this.x + (this.shownX - this.x) * (dz / d);
+      this.shownY = this.y + (this.shownY - this.y) * (dz / d);
+    }
+    return this;
+  }
+}
 
 export class GazeEventDetector {
   /** @param {(ev:{kind:'fixation'|'saccade', x:number, y:number, dwellMs:number})=>void} onEvent */

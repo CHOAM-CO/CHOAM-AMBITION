@@ -5,7 +5,7 @@
 // which itself ports EyeTheia (https://github.com/patherstevenson/EyeTheia, GPL-3.0) and the iTracker model
 // (Krafka et al., "Eye Tracking for Everyone"). This file and the ONNX models derived from EyeTheia are
 // therefore GPL-3.0 as well.
-import { CONFIG } from './events.js?v=r8';
+import { CONFIG } from './events.js?v=r9';
 
 const ORT_SRC = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.webgpu.min.js';
 const ORT_WASM = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/';
@@ -32,7 +32,7 @@ const loadScript = (src) => new Promise((res, rej) => {
 });
 
 // ---------- One Euro filter (EyeTheia: mincutoff 1.5, beta 0.02, pixel space) ----------
-class OneEuro {
+export class OneEuro {
   constructor(minCutoff = 1.5, beta = 0.02, dCutoff = 1.0) { Object.assign(this, { minCutoff, beta, dCutoff }); this.reset(); }
   reset() { this.x = this.dx = this.t = null; }
   static alpha(cutoff, dt) { const r = 2 * Math.PI * cutoff * dt; return r / (r + 1); }
@@ -212,6 +212,8 @@ export class EyeTheiaSource {
       let x, y;
       if (this.calib) {
         const [nx, ny] = predict(this.calib, [...l.feat, raw[0], raw[1]]);
+        const sg = this.smoothing; // live-tunable
+        for (const f of [this.filt.x, this.filt.y]) { f.minCutoff = sg.minCutoff; f.beta = sg.beta; }
         x = this.filt.x.filter(clamp(nx, 0, 1) * innerWidth, tn / 1000); y = this.filt.y.filter(clamp(ny, 0, 1) * innerHeight, tn / 1000);
       } else { x = clamp(raw[0], 0, 1) * innerWidth; y = clamp(raw[1], 0, 1) * innerHeight; }
       this.p = { x, y, t: tn };
@@ -252,7 +254,8 @@ export class EyeTheiaSource {
   }
 
   debugInfo() {
-    return `eyetheia ${this.modelName} ${this.ep.toUpperCase()} ${this.ms.toFixed(0)}ms` +
+    const g = this.smoothing;
+    return `eyetheia ${this.modelName} ${this.ep.toUpperCase()} ${this.ms.toFixed(0)}ms | smooth minCutoff=${g.minCutoff} beta=${g.beta} win=${g.window} alpha=${g.alpha} dz=${g.deadzonePx}px` +
       (this.calib ? ` cv=${this.calib.err.toFixed(0)}px ${this.calib.kind} λ=${this.calib.lambda} n=${this.calib.n}` : ' (uncalibrated)');
   }
 }

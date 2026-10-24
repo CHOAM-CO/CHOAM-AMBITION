@@ -1,12 +1,12 @@
-import { api, MOCK, PARAMS } from './api.js?v=r8';
-import { CONFIG, GazeEventDetector } from './events.js?v=r8';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r8';
-import { EyeTheiaSource } from './eyetheia.js?v=r8';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r8';
-import { grab } from './capture.js?v=r8';
-import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime } from './ui.js?v=r8';
-import { HeadGestures } from './gesture.js?v=r8';
-import { Dwell } from './dwell.js?v=r8';
+import { api, MOCK, PARAMS } from './api.js?v=r9';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r9';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r9';
+import { EyeTheiaSource } from './eyetheia.js?v=r9';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r9';
+import { grab } from './capture.js?v=r9';
+import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime } from './ui.js?v=r9';
+import { HeadGestures } from './gesture.js?v=r9';
+import { Dwell } from './dwell.js?v=r9';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -16,7 +16,7 @@ if (DEBUG) document.body.classList.add('debug');
 // state: landing | setup | home | watch | summary
 const S = { state: 'landing', catalog: [], video: null, videoUrl: null, player: null, session: null, source: null, tick: null, finished: false, token: 0, nextTimer: null, homeTimer: null };
 let sm = null; // smoothed gaze {x,y}
-let win = []; // recent raw samples for the median
+const smoother = new GazeSmoother();
 const dwell = new Dwell();
 
 function show(state) {
@@ -181,16 +181,15 @@ function tick() {
     raw = { x: Math.max(0, Math.min(innerWidth, K.a * raw.x + K.b)), y: Math.max(0, Math.min(innerHeight, K.c * raw.y + K.d)), t: raw.t };
   }
   const now = performance.now();
-  if (!raw) { sm = null; win = []; dot.style.opacity = 0; detector.reset(); dwell.update(null, now); return; }
+  if (!raw) { sm = null; smoother.reset(); dot.style.opacity = 0; detector.reset(); dwell.update(null, now); return; }
   const mouse = S.source.mode === 'mouse';
-  const sg = S.source.smoothing; // per-source override (EyeTheia already has a One Euro filter)
-  const a = mouse ? CONFIG.smoothingAlphaMouse : sg ? sg.alpha : CONFIG.smoothingAlpha;
-  win.push(raw); if (win.length > (mouse ? CONFIG.medianWindowMouse : sg ? sg.window : CONFIG.medianWindow)) win.shift();
-  const med = (k) => { const v = win.map((p) => p[k]).sort((m, n) => m - n); return v[v.length >> 1]; };
-  const mx = med('x'), my = med('y');
-  sm = sm ? { x: sm.x + a * (mx - sm.x), y: sm.y + a * (my - sm.y) } : { x: mx, y: my };
+  const sg = S.source.smoothing; // per-source (EyeTheia: live CONFIG.eyetheia.smoothing)
+  const cfg = mouse ? { window: CONFIG.medianWindowMouse, alpha: CONFIG.smoothingAlphaMouse, deadzonePx: 0 }
+    : sg ? sg : { window: CONFIG.medianWindow, alpha: CONFIG.smoothingAlpha, deadzonePx: 0 };
+  smoother.push(raw, cfg);
+  sm = { x: smoother.x, y: smoother.y }; // events + dwell read the smoothed signal
   dot.style.opacity = 1;
-  dot.style.transform = `translate(${sm.x}px, ${sm.y}px)`;
+  dot.style.transform = `translate(${smoother.shownX}px, ${smoother.shownY}px)`; // the dot gets the dead-zone on top
   dwell.update(sm, now);
 
   const p = S.player;
