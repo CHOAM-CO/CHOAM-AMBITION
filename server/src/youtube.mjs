@@ -270,13 +270,13 @@ export async function grabFrames({ youtubeId, videoUrl }, videoTime, gaze) {
   return { full, crop, t };
 }
 
-// Flat YouTube search via yt-dlp (no download). recent=true sorts newest first (ytsearchdate). Durations are seconds (null when unknown, e.g. live).
+// Flat YouTube search via yt-dlp (no download), relevance-ranked (the box's yt-dlp rejects ytsearchdate; `recent` is accepted but ignored - put the date/event in the query). Durations are seconds (null when unknown, e.g. live).
 export async function searchVideos(query, { n = 6, recent = false } = {}) {
   const q = String(query || '').trim().slice(0, 120);
   if (!q) return [];
   // -j (JSON lines) instead of --print: on the Windows box --print goes out in the console codepage and mangles Korean titles
   const out = await run(tool('yt-dlp'), ['--flat-playlist', '--no-warnings', '-j', '--js-runtimes', `node:${process.execPath}`, '--cache-dir', config.ytCacheDir,
-    `${recent ? 'ytsearchdate' : 'ytsearch'}${Math.min(10, n)}:${q}`], { timeoutMs: 30000 });
+    `ytsearch${Math.min(10, n)}:${q}`], { timeoutMs: 30000 });
   const res = [];
   for (const l of out.split(/\r?\n/)) {
     let j; try { j = JSON.parse(l); } catch { continue; }
