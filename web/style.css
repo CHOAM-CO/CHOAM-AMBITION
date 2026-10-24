@@ -125,3 +125,4 @@ img.blank { background:#333 !important; visibility:visible; }
 .plain-link { font-size:12px; color:#8ab4ff; word-break:break-all; user-select:text; }
 .cap.wish { border-color:#3b5a3b; }
 [hidden] { display:none !important; }
+.hud { white-space:pre; }

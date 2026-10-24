@@ -52,6 +52,12 @@ export const CONFIG = {
     cooldownMs: 1200,
   },
 
+  // EyeTheia tracker (default; ?tracker=webgazer for the old path; ?model=baseline, ?margin=px, ?models=<base url>)
+  eyetheia: {
+    modelBase: '/media/models/',
+    smoothing: { window: 3, alpha: 0.4 }, // main-loop median window + EMA on top of the One Euro filter
+  },
+
   // gaze-dwell buttons (home cards, watch/summary controls)
   dwell: { ms: 1500, marginPx: 24, lockMs: 1000 },
   nextVideoAutoMs: 15000,       // summary: auto-advance to the next video

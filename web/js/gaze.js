@@ -1,4 +1,4 @@
-import { CONFIG } from './events.js?v=r7';
+import { CONFIG } from './events.js?v=r8';
 // Gaze sources: WebGazer (webcam) or mouse. Exposes latest raw point in client px.
 const WEBGAZER_SRC = 'https://cdn.jsdelivr.net/npm/webgazer@3.4.0/dist/webgazer.min.js';
 
@@ -49,6 +49,11 @@ export class WebGazerSource {
 
   clear() { if (this.wg && this.wg.clearData) this.wg.clearData(); }
 
+  /** calibration hook: train on one (x,y) target in px */
+  record(x, y) { if (this.wg) { try { this.wg.recordScreenPosition(x, y, 'click'); } catch {} } }
+
+  fit() {}
+
   freeze() { // stop learning from mouse after calibration
     if (this.wg && this.wg.removeMouseEventListeners) this.wg.removeMouseEventListeners();
   }
@@ -92,6 +97,10 @@ export async function runCalibration(root, source, getGaze, clickMode = false) {
           b.className = 'calib-pt'; b.style.left = px + '%'; b.style.top = py + '%'; b.textContent = CLICKS;
           let n = CLICKS;
           b.onclick = () => {
+            if (source.kind === 'eyetheia') { // WebGazer trains on clicks itself; EyeTheia records a short burst
+              const x = innerWidth * px / 100, y = innerHeight * py / 100;
+              for (let k = 0; k < 8; k++) setTimeout(() => source.record(x, y), k * 60);
+            }
             n--; b.textContent = n; b.style.opacity = String(0.35 + 0.65 * (n / CLICKS));
             if (n <= 0) { b.remove(); if (--left === 0) resolve(); }
           };
@@ -112,12 +121,13 @@ export async function runCalibration(root, source, getGaze, clickMode = false) {
         await sleep(ac.waitMs);
         const t0 = performance.now();
         while (performance.now() - t0 < ac.collectMs) {
-          if (source.wg) { try { source.wg.recordScreenPosition(x, y, 'click'); } catch {} } // no prediction exists before the first sample, so do not gate on latest()
+          source.record(x, y); // no prediction exists before the first sample, so do not gate on latest()
           await sleep(ac.tickMs);
         }
         d.remove();
       }
     }
+    source.fit && source.fit(); // EyeTheia: ridge fit on everything collected (WebGazer: no-op)
     source.freeze && source.freeze();
 
     // accuracy check

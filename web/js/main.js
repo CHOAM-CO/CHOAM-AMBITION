@@ -1,11 +1,12 @@
-import { api, MOCK, PARAMS } from './api.js?v=r7';
-import { CONFIG, GazeEventDetector } from './events.js?v=r7';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r7';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r7';
-import { grab } from './capture.js?v=r7';
-import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime } from './ui.js?v=r7';
-import { HeadGestures } from './gesture.js?v=r7';
-import { Dwell } from './dwell.js?v=r7';
+import { api, MOCK, PARAMS } from './api.js?v=r8';
+import { CONFIG, GazeEventDetector } from './events.js?v=r8';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r8';
+import { EyeTheiaSource } from './eyetheia.js?v=r8';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r8';
+import { grab } from './capture.js?v=r8';
+import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime } from './ui.js?v=r8';
+import { HeadGestures } from './gesture.js?v=r8';
+import { Dwell } from './dwell.js?v=r8';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -36,12 +37,14 @@ $('#btn-start').onclick = async () => {
     if (MOUSE) {
       S.source = new MouseSource(); await S.source.start(); startTick();
     } else {
-      S.source = new WebGazerSource();
+      const useWG = PARAMS.get('tracker') === 'webgazer';
+      S.source = useWG ? new WebGazerSource() : new EyeTheiaSource();
       for (;;) {
         try { setup('카메라 준비 중…'); await S.source.start(setup); break; }
         catch (e) {
           const choice = await askFail(e);
           if (choice === 'mouse') { S.source = new MouseSource(); await S.source.start(); break; }
+          S.source = useWG ? new WebGazerSource() : new EyeTheiaSource(); // retry with a fresh source
         }
       }
       setup(null);
@@ -180,8 +183,9 @@ function tick() {
   const now = performance.now();
   if (!raw) { sm = null; win = []; dot.style.opacity = 0; detector.reset(); dwell.update(null, now); return; }
   const mouse = S.source.mode === 'mouse';
-  const a = mouse ? CONFIG.smoothingAlphaMouse : CONFIG.smoothingAlpha;
-  win.push(raw); if (win.length > (mouse ? CONFIG.medianWindowMouse : CONFIG.medianWindow)) win.shift();
+  const sg = S.source.smoothing; // per-source override (EyeTheia already has a One Euro filter)
+  const a = mouse ? CONFIG.smoothingAlphaMouse : sg ? sg.alpha : CONFIG.smoothingAlpha;
+  win.push(raw); if (win.length > (mouse ? CONFIG.medianWindowMouse : sg ? sg.window : CONFIG.medianWindow)) win.shift();
   const med = (k) => { const v = win.map((p) => p[k]).sort((m, n) => m - n); return v[v.length >> 1]; };
   const mx = med('x'), my = med('y');
   sm = sm ? { x: sm.x + a * (mx - sm.x), y: sm.y + a * (my - sm.y) } : { x: mx, y: my };
@@ -198,7 +202,7 @@ function tick() {
   dot.classList.toggle('active', inside);
   if (inside) detector.push(now, sm.x, sm.y); else detector.reset();
   dot.style.setProperty('--p', (inside ? detector.fixProgress : 0) * 360 + 'deg');
-  if (DEBUG) $('#hud').textContent = `${S.state} gaze ${sm.x | 0},${sm.y | 0} inside=${inside} fix=${detector.fixProgress.toFixed(2)} sac=${detector.sacState} a=${K.a.toFixed(2)} b=${K.b | 0} c=${K.c.toFixed(2)} d=${K.d | 0}${K.active ? '' : ' (off)'}`;
+  if (DEBUG) $('#hud').textContent = `${S.state} gaze ${sm.x | 0},${sm.y | 0} inside=${inside} fix=${detector.fixProgress.toFixed(2)} sac=${detector.sacState} a=${K.a.toFixed(2)} b=${K.b | 0} c=${K.c.toFixed(2)} d=${K.d | 0}${K.active ? '' : ' (off)'}${S.source.debugInfo ? '\n' + S.source.debugInfo() : ''}`;
 }
 
 // ---------- capture ----------
