@@ -1,5 +1,5 @@
 // DOM helpers: toasts, capture panel, agent bubble, summary.
-import { CONFIG } from './events.js?v=r9';
+import { CONFIG } from './events.js?v=r10';
 
 const $ = (s) => document.querySelector(s);
 export const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -67,7 +67,7 @@ export function addWish({ id, thumb, label, category, links }) {
   $('#wish-empty').hidden = true;
   const li = document.createElement('li');
   li.className = 'cap wish';
-  const img = document.createElement('img'); img.alt = ''; if (thumb) img.src = thumb;
+  const img = document.createElement('img'); img.alt = ''; if (thumb) img.src = thumb; else img.classList.add('blank');
   const m = document.createElement('div'); m.className = 'meta';
   const l = document.createElement('strong'); l.textContent = label || '';
   m.appendChild(l);
@@ -114,6 +114,40 @@ export function bubbleLinks(links) {
   if (links && links.length) bubbleEl.appendChild(linkList(links));
   const close = document.createElement('button'); close.className = 'btn'; close.textContent = '닫기'; close.dataset.role = 'close'; close.onclick = dismissBubble;
   bubbleEl.appendChild(close);
+}
+
+/** voice-chat bubble: text first ("찾아보는 중…"), then reply + item cards. Replaces any open bubble. */
+let chatTimer = null;
+export function openChatBubble(text) {
+  dismissBubble();
+  const el = document.createElement('div');
+  el.className = 'bubble chat';
+  bubbleText = document.createElement('p'); bubbleText.textContent = text;
+  el.appendChild(bubbleText);
+  $('#bubble-slot').appendChild(el);
+  bubbleEl = el;
+  bubbleTimer = setTimeout(dismissBubble, 60000);
+  return el;
+}
+const shortUrl = (u) => { try { const x = new URL(u); return x.host.replace(/^www\./, '') + (x.pathname.length > 1 ? x.pathname.slice(0, 24) : ''); } catch { return (u || '').slice(0, 36); } };
+export function updateChatBubble(el, { text, items, ttlMs = 25000 }) {
+  if (el !== bubbleEl) return false; // replaced meanwhile
+  bubbleText.textContent = text;
+  el.querySelectorAll('.chat-items').forEach((n) => n.remove());
+  if (items && items.length) {
+    const box = document.createElement('div'); box.className = 'chat-items';
+    for (const it of items) {
+      const c = document.createElement('div'); c.className = 'chat-item';
+      const n = document.createElement('strong'); n.textContent = it.name || '';
+      c.appendChild(n);
+      if (it.price) { const p = document.createElement('span'); p.className = 'price'; p.textContent = it.price; c.appendChild(p); }
+      const u = document.createElement('span'); u.className = 'plain-link'; u.textContent = `${it.source ? it.source + ' · ' : ''}${shortUrl(it.url)}`; c.appendChild(u);
+      box.appendChild(c);
+    }
+    el.appendChild(box);
+  }
+  clearTimeout(bubbleTimer); bubbleTimer = setTimeout(dismissBubble, ttlMs);
+  return true;
 }
 
 let badgeTimer = null;

@@ -126,3 +126,16 @@ img.blank { background:#333 !important; visibility:visible; }
 .cap.wish { border-color:#3b5a3b; }
 [hidden] { display:none !important; }
 .hud { white-space:pre; }
+
+/* round 8: voice chat */
+#caption { position:fixed; left:50%; bottom:12px; transform:translateX(-50%); z-index:80; display:flex; gap:10px; align-items:center; max-width:min(720px, 92vw); background:#000c; border:1px solid var(--line); border-radius:99px; padding:6px 16px; font-size:14px; }
+#caption-text { color:#cfd5e4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:560px; }
+#caption-text.interim { color:#8c93a5; font-style:italic; }
+#caption-input { background:transparent; border:0; border-left:1px solid var(--line); color:var(--text); font:inherit; padding:2px 8px; width:240px; outline:0; }
+.chip.mic-on { color:#7be7a5; border-color:#2d6a47; }
+.chip.mic-error { color:#ff9a9a; border-color:#6b3030; }
+.bubble.chat { background:#fff; }
+.chat-items { display:flex; flex-direction:column; gap:6px; margin-top:6px; }
+.chat-item { display:grid; grid-template-columns:1fr auto; gap:0 12px; background:#f1f3f8; border-radius:8px; padding:6px 10px; }
+.chat-item .price { font-weight:700; color:#b3470b; }
+.chat-item .plain-link { grid-column:1 / -1; color:#0a58c9; font-size:12px; }

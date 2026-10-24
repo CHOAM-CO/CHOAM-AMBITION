@@ -36,6 +36,8 @@ export function createMp4Player(host, url) {
       return { left, top, width: w, height: h, right: left + w, bottom: top + h };
     },
     onEnded: (cb) => { endedCb = cb; },
+    getVolume: () => v.volume,
+    setVolume: (f) => { v.volume = Math.max(0, Math.min(1, f)); },
     play: () => v.play().catch(() => {}),
     pause: () => v.pause(),
     title: null,
@@ -80,6 +82,8 @@ export async function createYouTubePlayer(host, yt) {
     time: () => { try { return p.getCurrentTime() || 0; } catch { return 0; } },
     contentRect: () => host.getBoundingClientRect(),
     onEnded: (cb) => { endedCb = cb; },
+    getVolume: () => { try { return p.getVolume() / 100; } catch { return 1; } },
+    setVolume: (f) => { try { p.setVolume(Math.round(Math.max(0, Math.min(1, f)) * 100)); } catch {} },
     play: () => { try { p.playVideo(); } catch {} },
     pause: () => { try { p.pauseVideo(); } catch {} },
     title,

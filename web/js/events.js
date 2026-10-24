@@ -59,6 +59,9 @@ export const CONFIG = {
     smoothing: { minCutoff: 0.4, beta: 0.005, window: 6, alpha: 0.2, deadzonePx: 25 },
   },
 
+  // voice chat
+  voice: { duckLevel: 0.2, minChars: 2 }, // duck the video to 20% while the viewer talks; ignore finals of <= minChars
+
   // gaze-dwell buttons (home cards, watch/summary controls)
   dwell: { ms: 1500, marginPx: 24, lockMs: 1000 },
   nextVideoAutoMs: 15000,       // summary: auto-advance to the next video

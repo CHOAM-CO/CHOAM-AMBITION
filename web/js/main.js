@@ -1,12 +1,13 @@
-import { api, MOCK, PARAMS } from './api.js?v=r9';
-import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r9';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r9';
-import { EyeTheiaSource } from './eyetheia.js?v=r9';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r9';
-import { grab } from './capture.js?v=r9';
-import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime } from './ui.js?v=r9';
-import { HeadGestures } from './gesture.js?v=r9';
-import { Dwell } from './dwell.js?v=r9';
+import { api, MOCK, PARAMS } from './api.js?v=r10';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r10';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r10';
+import { EyeTheiaSource } from './eyetheia.js?v=r10';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r10';
+import { grab } from './capture.js?v=r10';
+import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime, openChatBubble, updateChatBubble } from './ui.js?v=r10';
+import { HeadGestures } from './gesture.js?v=r10';
+import { Dwell } from './dwell.js?v=r10';
+import { Voice } from './voice.js?v=r10';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -30,6 +31,7 @@ function show(state) {
 
 // ---------- start (the only click) ----------
 $('#btn-start').onclick = async () => {
+  voice.start(); // inside the click: lets the mic permission prompt appear
   $('#btn-start').disabled = true;
   S.state = 'setup';
   $('#screen-landing').hidden = true;
@@ -201,7 +203,7 @@ function tick() {
   dot.classList.toggle('active', inside);
   if (inside) detector.push(now, sm.x, sm.y); else detector.reset();
   dot.style.setProperty('--p', (inside ? detector.fixProgress : 0) * 360 + 'deg');
-  if (DEBUG) $('#hud').textContent = `${S.state} gaze ${sm.x | 0},${sm.y | 0} inside=${inside} fix=${detector.fixProgress.toFixed(2)} sac=${detector.sacState} a=${K.a.toFixed(2)} b=${K.b | 0} c=${K.c.toFixed(2)} d=${K.d | 0}${K.active ? '' : ' (off)'}${S.source.debugInfo ? '\n' + S.source.debugInfo() : ''}`;
+  if (DEBUG) $('#hud').textContent = `${S.state} gaze ${sm.x | 0},${sm.y | 0} inside=${inside} fix=${detector.fixProgress.toFixed(2)} mic=${voice.state}${voice.speaking ? '/speaking' : ''}${voice.inSpeech ? '/hearing' : ''} sac=${detector.sacState} a=${K.a.toFixed(2)} b=${K.b | 0} c=${K.c.toFixed(2)} d=${K.d | 0}${K.active ? '' : ' (off)'}${S.source.debugInfo ? '\n' + S.source.debugInfo() : ''}`;
 }
 
 // ---------- capture ----------
@@ -297,6 +299,80 @@ addEventListener('keydown', (e) => {
   if (e.key === 'y' || e.key === 'Y') onGesture('nod');
   else if (e.key === 'n' || e.key === 'N') onGesture('shake');
 });
+
+// ---------- voice chat ----------
+const capText = $('#caption-text'), capInput = $('#caption-input');
+let capTimer = null, duckTimer = null, duckSaved = null, chatBusy = 0, chatSeq = 0;
+const MIC_LABEL = { on: '마이크 켜짐', off: '마이크 꺼짐', error: '마이크 오류', unsupported: '음성 미지원' };
+
+const voice = new Voice({
+  onState: (s) => {
+    const c = $('#chip-mic'); c.textContent = MIC_LABEL[s] || s; c.className = 'chip' + (s === 'on' ? ' mic-on' : s === 'error' ? ' mic-error' : '');
+    if (!capTimer) capText.textContent = s === 'on' ? '🎙 …' : '🎙 ' + (MIC_LABEL[s] || s);
+  },
+  onSpeechStart: () => { duck(true); scheduleUnduck(4000); },
+  onInterim: (t) => { clearTimeout(capTimer); capTimer = null; capText.textContent = '🎙 ' + t; capText.classList.add('interim'); scheduleUnduck(4000); },
+  onFinal: (t) => handleUtterance(t, 'voice'),
+});
+
+function caption(text, ms = 3000) {
+  capText.classList.remove('interim'); capText.textContent = '🎙 ' + text;
+  clearTimeout(capTimer);
+  capTimer = setTimeout(() => { capTimer = null; capText.classList.remove('interim'); capText.textContent = voice.state === 'on' ? '🎙 …' : '🎙 ' + (MIC_LABEL[voice.state] || ''); }, ms);
+}
+
+// duck the video volume to ~20% while the viewer talks / the agent answers
+function duck(on) {
+  const p = S.player; if (!p || !p.setVolume) return;
+  if (on) { if (duckSaved == null) { duckSaved = p.getVolume(); p.setVolume(duckSaved * CONFIG.voice.duckLevel); } }
+  else if (duckSaved != null) { p.setVolume(duckSaved); duckSaved = null; }
+}
+function scheduleUnduck(ms) { clearTimeout(duckTimer); duckTimer = setTimeout(() => { if (!chatBusy && !voice.speaking) duck(false); }, ms); }
+
+async function handleUtterance(raw, source) {
+  const text = (raw || '').trim();
+  if (text) caption(text);
+  if (text.length <= CONFIG.voice.minChars || S.state !== 'watch' || !S.player || S.finished) { scheduleUnduck(1500); return; }
+  const token = S.token, v = S.video, seq = ++chatSeq;
+  chatBusy++;
+  duck(true);
+  dlg = null;
+  const bubble = openChatBubble('찾아보는 중…'); // immediately
+  try {
+    if (!S.session) {
+      const r = await api.session({ videoUrl: S.videoUrl, videoTitle: v.title, source: v.source, youtubeId: v.youtubeId });
+      if (token !== S.token) return;
+      S.session = r.sessionId;
+    }
+    const rect = S.player.contentRect();
+    const gaze = sm ? { x: +Math.min(1, Math.max(0, (sm.x - rect.left) / rect.width)).toFixed(4), y: +Math.min(1, Math.max(0, (sm.y - rect.top) / rect.height)).toFixed(4) } : null;
+    const body = { sessionId: S.session, text, source, videoUrl: S.videoUrl, videoTitle: v.title, videoTime: +S.player.time().toFixed(2), gaze };
+    if (v.source === 'youtube') body.youtubeId = v.youtubeId;
+    const res = await api.chat(body);
+    if (token !== S.token || seq !== chatSeq) return;
+    if (res.ignored) { dismissBubble(); return; } // not for the agent: show nothing
+    updateChatBubble(bubble, { text: res.reply || '', items: res.items });
+    for (const it of res.items || []) {
+      addWish({ id: (res.captureId || 'chat' + seq) + ':' + it.name, label: it.price ? `${it.name} · ${it.price}` : it.name, category: 'product', links: [{ title: it.source || '', url: it.url }] });
+    }
+    if (res.speak && res.reply) await voice.speak(res.reply);
+  } catch (e) {
+    if (token === S.token && seq === chatSeq) { dismissBubble(); toast('대화 오류: ' + e.message); }
+  } finally {
+    chatBusy--;
+    scheduleUnduck(chatBusy ? 4000 : 400);
+  }
+}
+
+// typing stand-in for speech (mouse / debug mode), e.g. for headless smoke tests
+if (MOUSE || DEBUG) {
+  capInput.hidden = false;
+  capInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || !capInput.value.trim()) return;
+    const t = capInput.value; capInput.value = '';
+    duck(true); handleUtterance(t, 'typed');
+  });
+}
 
 // ---------- summary ----------
 async function finish() {

@@ -5,7 +5,7 @@
 // which itself ports EyeTheia (https://github.com/patherstevenson/EyeTheia, GPL-3.0) and the iTracker model
 // (Krafka et al., "Eye Tracking for Everyone"). This file and the ONNX models derived from EyeTheia are
 // therefore GPL-3.0 as well.
-import { CONFIG } from './events.js?v=r9';
+import { CONFIG } from './events.js?v=r10';
 
 const ORT_SRC = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.webgpu.min.js';
 const ORT_WASM = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/';

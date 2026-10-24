@@ -63,6 +63,20 @@ export async function mockApi(method, path, body) {
     };
   }
 
+  if (path === '/api/chat') {
+    await sleep(900);
+    store.chat = (store.chat || 0) + 1;
+    if (/무시|^.{0,2}$/.test(body.text)) return { reply: '', speak: false, ignored: true, items: [] };
+    const q = body.text.slice(0, 20);
+    return {
+      reply: `"${q}" 찾아봤어요. 이런 게 있어요.`, speak: true, ignored: false, captureId: 'chat' + store.chat,
+      items: [
+        { name: '미니멀 스탠드 조명', price: '39,900원', url: 'https://www.google.com/search?tbm=shop&q=' + encodeURIComponent(q), source: '쇼핑' },
+        { name: '무드등 LED 램프', price: '24,500원', url: 'https://www.google.com/search?tbm=shop&q=' + encodeURIComponent(q + ' 무드등'), source: '쇼핑' },
+      ],
+    };
+  }
+
   if (path === '/api/feedback') return { ok: true };
 
   if (path === '/api/summary') {

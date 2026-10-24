@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CHOAM AMBITION</title>
-<link rel="stylesheet" href="style.css?v=r9">
+<link rel="stylesheet" href="style.css?v=r10">
 </head>
 <body>
 <header class="top">
@@ -12,6 +12,7 @@
   <div class="chips">
     <span class="chip" id="chip-mode" hidden></span>
     <span class="chip" id="chip-src"></span>
+    <span class="chip" id="chip-mic">마이크 꺼짐</span>
     <span class="chip">캡처 <b id="cap-count">0</b></span>
   </div>
 </header>
@@ -62,9 +63,10 @@
   </div>
 </div>
 
+<div id="caption"><span id="caption-text">🎙 …</span><input id="caption-input" type="text" placeholder="말 대신 입력하고 Enter" autocomplete="off" hidden></div>
 <div id="gaze-dot"></div><div id="gesture-badge"></div>
 <div id="hud" class="hud" hidden></div>
 <div id="toasts"></div>
-<script type="module" src="js/main.js?v=r9"></script>
+<script type="module" src="js/main.js?v=r10"></script>
 </body>
 </html>
