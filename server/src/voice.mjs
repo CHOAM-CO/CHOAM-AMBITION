@@ -54,7 +54,17 @@ function splitSentences(buf, final) {
 async function runTurn({ session, body, trigger, text, emit, say, isClosed, t0, hint = '', asking = false, framesPromise = null }) {
   const out = { mode: '', tGate: null, tools: [] };
   const spoken = [];
-  const sayAll = (t) => { spoken.push(t); say(t); };
+  // First line of a reply: if long, cut at the first clause comma (>= 8 chars in) so seq 0 synthesizes fast.
+  let firstDone = false;
+  const sayAll = (t) => {
+    spoken.push(t);
+    if (!firstDone) {
+      firstDone = true;
+      const m = t.length > 22 ? /^(.{8,}?[,，、])\s*(.{6,})$/.exec(t) : null;
+      if (m) { say(m[1]); say(m[2]); return; }
+    }
+    say(t);
+  };
   const { frames, images, note, ctx } = await buildContext(session, body, trigger, framesPromise);
   const instruction = (trigger === 'user' ? '' : (trigger === 'idle' ? '\n(시청자는 말이 없어요. idle: 화면에 대해 먼저 한마디 할 만하면 [SAY], 아니면 [SKIP].)' : '\n(시청자가 방금 당신의 말에 답이 없어요. follow-up: 가볍게 이어서 한마디 하거나 [SKIP].)')) + hint;
   const stream = streamSimple(visionModel, {
@@ -181,12 +191,14 @@ export async function handleVoiceTalk(audio, req, res, url, { HttpError }) {
   const { emit } = st;
   let tAsr = null, tFirstAudio = null, text = '', mode = '';
   let r = { mode: '', tGate: null, tools: [] };
-  let seq = 0, chain = Promise.resolve(), ttfs = null;
+  let seq = 0, chain = Promise.resolve(), ttfs = null, firstWav = Promise.resolve();
   const say = (t) => {
     if (ttfs == null) ttfs = Date.now() - t0;
     emit({ type: 'say', text: t });
     const my = seq++;
-    const wav = synthWav(t).catch((e) => { log('tts failed', e.message); return null; }); // starts now, runs while the model keeps streaming
+    // seq 0 gets the CPU alone (first audio is what the viewer feels); seq >= 1 start once seq 0's wav is done and then run in parallel on the pool.
+    const wav = (my === 0 ? synthWav(t) : firstWav.then(() => synthWav(t))).catch((e) => { log('tts failed', e.message); return null; });
+    if (my === 0) firstWav = wav;
     chain = chain.then(async () => {
       const b = await wav;
       if (!b) return emit({ type: 'audio', seq: my, sentence: t, error: 'tts_failed' });
