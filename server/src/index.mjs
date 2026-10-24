@@ -67,7 +67,7 @@ async function handleCapture(body) {
 
   // 2) vision
   let v = null;
-  try { v = await analyzeCrop(jpeg); } catch (e) { meta.visionError = String(e.message || e).slice(0, 300); log('vision error', captureId, meta.visionError); }
+  try { v = await analyzeCrop(jpeg, session.labels || []); } catch (e) { meta.visionError = String(e.message || e).slice(0, 300); log('vision error', captureId, meta.visionError); }
   if (v) {
     meta.item = v.label ? { label: v.label, category: v.category, description: v.description } : null;
     meta.isProduct = !!(v.label && v.isProduct);
@@ -80,11 +80,12 @@ async function handleCapture(body) {
   await store.withSession(session.id, async () => {
     const s = await store.getSession(session.id);
     const key = normLabel(meta.item?.label);
+    if (meta.isProduct && !(s.labels || (s.labels = [])).some((l) => normLabel(l) === key)) s.labels.push(meta.item.label);
     const clear = meta.isProduct && meta.query && v?.say && meta.confidence >= 0.6;
     if (clear && Date.now() - (s.lastSpokenAt || 0) >= config.speakCooldownMs && !s.spoken.includes(key)) {
       speak = true; s.lastSpokenAt = Date.now(); s.spoken.push(key);
-      await store.saveSession(s);
     }
+    await store.saveSession(s);
   });
   meta.speak = speak; meta.say = speak ? v.say : null;
   meta.latencyMs = Date.now() - t0;

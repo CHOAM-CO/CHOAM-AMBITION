@@ -25,6 +25,7 @@ const fastPayload = (thinking) => (payload) => ({
 const visionPayload = fastPayload({ type: 'disabled' });
 const summaryPayload = fastPayload({ type: 'between_tools' });
 
+const normLabel = (s) => (s || '').toLowerCase().replace(/\s+/g, '');
 const textOf = (msg) => (msg.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
 function parseJson(text) {
   const m = text.match(/\{[\s\S]*\}/);
@@ -32,40 +33,51 @@ function parseJson(text) {
   return JSON.parse(m[0]);
 }
 
-const VISION_SYSTEM = `You analyse a small crop taken from a video frame where a viewer's gaze rested.
-Look at the object at the CENTER of the crop (ignore peripheral clutter). Answer with ONE JSON object only, no prose:
+const VISION_SYSTEM = `You analyse an image cropped from a video frame. A semi-transparent RED RING marks the viewer's estimated gaze point. The estimate is imprecise: the true gaze can be ~15-20% of the image size away from the ring.
+Task: pick the SINGLE most plausible buyable product the viewer is looking at. Prefer the product nearest the ring; if the ring sits on background or a non-product, a clearly salient product nearby is allowed. Never mention or describe the ring itself, and never treat the ring as an object.
+Answer with ONE JSON object only, no prose:
 {
- "label": short Korean noun phrase for the object incl. colour/material, e.g. "갈색 가죽 토트백" (null if nothing identifiable),
- "category": Korean category word, e.g. "가방", "신발", "시계", "의류", "가전", "음식", "기타",
- "description": one Korean sentence describing what you see,
- "isProduct": true only if it is a clear, individually buyable consumer product (bag, shoes, watch, clothing, gadget...). false for people, scenery, food being eaten, furniture built into the scene, text, blur,
+ "label": short Korean noun phrase for that product incl. colour/material, e.g. "갈색 가죽 토트백" (null if no buyable product is plausible),
+ "category": Korean category word, e.g. "가방", "신발", "시계", "의류", "가전", "기타",
+ "description": one Korean sentence describing the product (not the ring),
+ "isProduct": true only if it is a clear, individually buyable consumer product (bag, shoes, watch, clothing, gadget...). false for people, scenery, food being eaten, built-in furniture, text, blur, or when nothing buyable is plausible,
  "confidence": 0..1 that label/isProduct are right,
  "query": short Korean shopping search query, 2-4 words, generic type + one key attribute (colour/material); add brand/model only if clearly readable; null if not a product,
  "say": natural Korean polite speech (해요체), ONE sentence, offering to look it up, e.g. "방금 그 갈색 가죽 토트백 눈여겨 보신 것 같은데, 찾아볼까요?"; null if not a product
-}`;
+}
+LABEL CONSISTENCY: you may be given labels already used earlier in this session. If the product is the same object/type as one of them, reuse that label EXACTLY (character for character). Only invent a new label for a genuinely different product.`;
 
-export async function analyzeCrop(jpegBuf) {
+
+export async function analyzeCrop(jpegBuf, knownLabels = []) {
+  const hint = knownLabels.length
+    ? `Labels already used in this session: ${JSON.stringify(knownLabels)}. Reuse one exactly if it is the same object.`
+    : 'No labels used yet in this session.';
   const context = {
     systemPrompt: VISION_SYSTEM,
     messages: [{
       role: 'user', timestamp: Date.now(),
       content: [
         { type: 'image', data: jpegBuf.toString('base64'), mimeType: 'image/jpeg' },
-        { type: 'text', text: 'Return the JSON for the object at the center of this crop.' },
+        { type: 'text', text: `${hint}\nReturn the JSON for the most plausible buyable product the viewer is looking at.` },
       ],
     }],
   };
   const res = await completeSimple(visionModel, context, { apiKey: config.apiKey, maxTokens: 400, onPayload: visionPayload });
   if (res.stopReason === 'error') throw new Error(res.errorMessage || 'vision call failed');
   const j = parseJson(textOf(res));
+  let label = j.label ? String(j.label).trim() : null;
+  // server-side guard: whitespace/case variants of a known label collapse to the known spelling
+  const known = label && knownLabels.find((k) => normLabel(k) === normLabel(label));
+  if (known) label = known;
+  const isProduct = !!(label && j.isProduct === true);
   return {
-    label: j.label ? String(j.label) : null,
-    category: j.category ? String(j.category) : null,
-    description: j.description ? String(j.description) : null,
-    isProduct: j.isProduct === true,
+    label: isProduct ? label : null,
+    category: isProduct && j.category ? String(j.category) : null,
+    description: isProduct && j.description ? String(j.description) : null,
+    isProduct,
     confidence: Number.isFinite(+j.confidence) ? +j.confidence : 0,
-    query: j.query ? String(j.query) : null,
-    say: j.say ? String(j.say) : null,
+    query: isProduct && j.query ? String(j.query) : null,
+    say: isProduct && j.say ? String(j.say) : null,
     usage: res.usage,
   };
 }
@@ -76,7 +88,6 @@ export const shopLinks = (q) => q ? [
 ] : [];
 
 // ---- Summary agent -------------------------------------------------------------------------
-const normLabel = (s) => (s || '').toLowerCase().replace(/\s+/g, '');
 
 function aggregate(captures) {
   const groups = new Map();

@@ -33,7 +33,7 @@ export async function createSession({ videoUrl, videoTitle, source }) {
   const id = newId('s');
   const session = {
     id, videoUrl: videoUrl ?? null, videoTitle: videoTitle ?? null, source: source ?? 'mp4',
-    createdAt: new Date().toISOString(), captureIds: [], lastSpokenAt: 0, spoken: [],
+    createdAt: new Date().toISOString(), captureIds: [], lastSpokenAt: 0, spoken: [], labels: [],
   };
   await fs.mkdir(sessionDir(id), { recursive: true });
   await writeJsonAtomic(sessionFile(id), session);
