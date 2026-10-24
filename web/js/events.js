@@ -63,6 +63,16 @@ export const CONFIG = {
   // hand gestures (MediaPipe GestureRecognizer): Thumb_Up=yes, Thumb_Down=no, Open_Palm=pause/resume, Pointing_Up=capture here, Victory=next video
   hands: { fps: 15, minScore: 0.6, holdMs: 450, cooldownMs: 1500 },
 
+  // facial expressions (blendshape scores 0..1; thresholds are guesses, tune live with ?debug=1 and window.AMBITION_CONFIG.expression)
+  expression: {
+    threshold: { 웃음: 0.45, 놀람: 0.4, 찡그림: 0.35 },  // 웃음: mouthSmile L/R | 놀람: browInnerUp+eyeWide+jawOpen | 찡그림: browDown + mouthFrown/noseSneer
+    holdMs: { 웃음: 400, 놀람: 250, 찡그림: 500 },       // must stay above the threshold this long
+    cooldownMs: 20000,                                   // per kind
+    minGapMs: 6000,                                      // between any two reactions
+    staleMs: 400,                                        // ignore blendshapes older than this
+    lines: { 웃음: ['ㅋㅋ 여기 웃기죠', 'ㅋㅋㅋ 저도 웃겼어요'], 놀람: ['헉 방금 봤어요?', '오 놀랐죠?'], 찡그림: ['별로예요?', '음 마음에 안 들어요?'] },
+  },
+
   // voice chat
   voice: { duckLevel: 0.15, minChars: 2 }, // duck the video to 15% while either side talks; ignore finals of <= minChars
   // call mode (VAD + ASR + streamed TTS)

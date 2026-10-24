@@ -76,6 +76,7 @@ export async function handleScene(body, { HttpError }) {
     id, t: new Date().toISOString(), videoTime, youtubeId: youtubeId ?? null,
     videoTitle: body.videoTitle || session.videoTitle || null,
     trigger: body.trigger === 'saccade' ? 'saccade' : String(body.trigger || 'manual').slice(0, 20),
+    expression: ['웃음', '놀람', '찡그림'].includes(body.expression) ? body.expression : undefined, // viewer's facial expression when this was taken
     gaze: body.gaze && Number.isFinite(+body.gaze.x) && Number.isFinite(+body.gaze.y) ? { x: +body.gaze.x, y: +body.gaze.y } : null,
     imageUrl: `/api/scene/img/${session.id}/${id}.jpg`,
   };
@@ -136,7 +137,7 @@ export function memoryBlock(session, captures, limit = 30) {
     if (sc.objects?.length) bits.push(`물건: ${sc.objects.slice(0, 8).join(', ')}`);
     if (sc.people?.length) bits.push(`인물: ${sc.people.map((p) => `${p.desc}${p.action ? ' ' + p.action : ''}`).join(', ')}`);
     if (sc.features?.length) bits.push(`특징: ${sc.features.slice(0, 5).join(', ')}`);
-    rows.push({ t: sc.t, line: `${stamp(sc.t, sc.videoTime, now)} 장면 ${bits.join(' — ')}` });
+    rows.push({ t: sc.t, line: `${stamp(sc.t, sc.videoTime, now)} 장면${sc.expression ? ` (시청자 ${sc.expression})` : ''} ${bits.join(' — ')}` });
   }
   const capById = new Map();
   for (const c of captures) {

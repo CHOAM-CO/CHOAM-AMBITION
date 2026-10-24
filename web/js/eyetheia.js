@@ -5,8 +5,8 @@
 // which itself ports EyeTheia (https://github.com/patherstevenson/EyeTheia, GPL-3.0) and the iTracker model
 // (Krafka et al., "Eye Tracking for Everyone"). This file and the ONNX models derived from EyeTheia are
 // therefore GPL-3.0 as well.
-import { CONFIG } from './events.js?v=r17';
-import { loadOrt } from './ort.js?v=r17';
+import { CONFIG } from './events.js?v=r18';
+import { loadOrt } from './ort.js?v=r18';
 
 const ORT_SRC = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.webgpu.min.js';
 const ORT_WASM = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/';
@@ -118,7 +118,7 @@ export class EyeTheiaSource {
     this.ep = '?'; this.p = null; this.last = null; this.lm = null; this.lmT = 0;
     this.calib = null; this.cal = null; this.recT = 0;
     this.filt = { x: new OneEuro(), y: new OneEuro() };
-    this.ms = 0;
+    this.ms = 0; this.lmMs = 0; this.blend = null; this.blendT = 0;
     this.running = false; this.busy = false;
   }
 
@@ -154,10 +154,10 @@ export class EyeTheiaSource {
     onStatus('얼굴 인식 모델 불러오는 중…');
     const { FaceLandmarker, FilesetResolver, GestureRecognizer } = await import(MP_BUNDLE);
     const fileset = await FilesetResolver.forVisionTasks(MP_WASM);
-    const make = (delegate) => FaceLandmarker.createFromOptions(fileset, { baseOptions: { modelAssetPath: MP_MODEL, delegate }, runningMode: 'VIDEO', numFaces: 1 });
+    const make = (delegate) => FaceLandmarker.createFromOptions(fileset, { baseOptions: { modelAssetPath: MP_MODEL, delegate }, runningMode: 'VIDEO', numFaces: 1, outputFaceBlendshapes: true });
     try { this.landmarker = await make('GPU'); } catch { this.landmarker = await make('CPU'); }
     // hand gestures on the same video, loaded in the background so start-up is not slowed
-    import('./hands.js?v=r17').then(async (m) => {
+    import('./hands.js?v=r18').then(async (m) => {
       this.hands = new m.HandGestures((g) => this.onHand && this.onHand(g));
       this.hands.onFeedback = (f) => this.onHandFeedback && this.onHandFeedback(f);
       await this.hands.init({ GestureRecognizer }, fileset, v);
@@ -202,8 +202,12 @@ export class EyeTheiaSource {
     this.busy = true;
     try {
       const v = this.video, W = v.videoWidth, H = v.videoHeight;
+      const tl = performance.now();
       const r = this.landmarker.detectForVideo(v, now);
-      if (!r.faceLandmarks || !r.faceLandmarks.length) { this.last = null; return; }
+      this.lmMs = performance.now() - tl;
+      if (!r.faceLandmarks || !r.faceLandmarks.length) { this.last = null; this.blend = null; return; }
+      const cats = r.faceBlendshapes && r.faceBlendshapes[0] && r.faceBlendshapes[0].categories;
+      if (cats) { const o = {}; for (const c of cats) o[c.categoryName] = c.score; this.blend = o; this.blendT = performance.now(); }
       const lm = r.faceLandmarks[0];
       this.lm = lm.map((p) => ({ x: p.x * W, y: p.y * H })); this.lmT = performance.now(); // for head gestures (same mesh topology)
       const pts = lm.map((p) => [Math.trunc(p.x * W), Math.trunc(p.y * H)]);
@@ -230,6 +234,8 @@ export class EyeTheiaSource {
 
   // ---- source interface (same as WebGazerSource) ----
   latest() { return this.p && performance.now() - this.p.t < 600 ? this.p : null; }
+  /** blendshape scores {mouthSmileLeft: 0..1, ...} of the newest frame, null if no face / stale */
+  blendshapes() { return this.blend && performance.now() - this.blendT < CONFIG.expression.staleMs ? this.blend : null; }
   positions() { return this.lm && performance.now() - this.lmT < 400 ? this.lm : null; }
   clear() { this.calib = null; this.cal = { X: [], Y: [], groups: [], gid: new Map() }; this.filt.x.reset(); this.filt.y.reset(); }
   freeze() {}
@@ -262,7 +268,7 @@ export class EyeTheiaSource {
 
   debugInfo() {
     const g = this.smoothing;
-    return `eyetheia ${this.modelName} ${this.ep.toUpperCase()} ${this.ms.toFixed(0)}ms | smooth minCutoff=${g.minCutoff} beta=${g.beta} win=${g.window} alpha=${g.alpha} dz=${g.deadzonePx}px` +
+    return `eyetheia ${this.modelName} ${this.ep.toUpperCase()} ${this.ms.toFixed(0)}ms landmarker+blendshapes ${this.lmMs.toFixed(0)}ms | smooth minCutoff=${g.minCutoff} beta=${g.beta} win=${g.window} alpha=${g.alpha} dz=${g.deadzonePx}px` +
       (this.hands ? ` hand=${this.hands.cur || '-'}` : '') +
       (this.calib ? ` cv=${this.calib.err.toFixed(0)}px ${this.calib.kind} λ=${this.calib.lambda} n=${this.calib.n}` : ' (uncalibrated)');
   }

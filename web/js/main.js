@@ -1,14 +1,15 @@
-import { api, MOCK, PARAMS } from './api.js?v=r17';
-import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r17';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r17';
-import { EyeTheiaSource } from './eyetheia.js?v=r17';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r17';
-import { grab, fullFrame } from './capture.js?v=r17';
-import { toast, addCapture, clearCaptures, renderScenes, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r17';
-import { HeadGestures } from './gesture.js?v=r17';
-import { Dwell } from './dwell.js?v=r17';
-import { Voice } from './voice.js?v=r17';
-import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r17';
+import { api, MOCK, PARAMS } from './api.js?v=r18';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r18';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r18';
+import { EyeTheiaSource } from './eyetheia.js?v=r18';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r18';
+import { grab, fullFrame } from './capture.js?v=r18';
+import { toast, addCapture, clearCaptures, renderScenes, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r18';
+import { HeadGestures } from './gesture.js?v=r18';
+import { ExpressionDetector, SIM } from './expression.js?v=r18';
+import { Dwell } from './dwell.js?v=r18';
+import { Voice } from './voice.js?v=r18';
+import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r18';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -231,6 +232,7 @@ function tick() {
   const nowG = performance.now();
   gest.setListening(!!dlg && dlg.asking && bubbleActive(), nowG);
   gest.update(nowG);
+  exprTick(nowG);
   let raw = S.source && S.source.latest();
   const K = CONFIG.correction;
   if (raw && K.active && S.source.mode !== 'mouse') {
@@ -262,7 +264,7 @@ function tick() {
   dot.classList.toggle('active', inside);
   if (inside) detector.push(now, sm.x, sm.y); else detector.reset();
   dot.style.setProperty('--p', (inside ? detector.fixProgress : 0) * 360 + 'deg');
-  if (DEBUG) $('#hud').textContent = `${S.state} gaze ${sm.x | 0},${sm.y | 0} inside=${inside} fix=${detector.fixProgress.toFixed(2)} call=${STT}/${muted ? 'muted' : vadReady ? 'ready' : 'loading'}${agentVoice.speaking ? '/speaking' : ''}${turnActive ? '/turn' : ''}${hearing ? '/hearing' : ''} sac=${detector.sacState} a=${K.a.toFixed(2)} b=${K.b | 0} c=${K.c.toFixed(2)} d=${K.d | 0}${K.active ? '' : ' (off)'}${S.source.debugInfo ? '\n' + S.source.debugInfo() : ''}`;
+  if (DEBUG) $('#hud').textContent = `${S.state} gaze ${sm.x | 0},${sm.y | 0} inside=${inside} fix=${detector.fixProgress.toFixed(2)} call=${STT}/${muted ? 'muted' : vadReady ? 'ready' : 'loading'}${agentVoice.speaking ? '/speaking' : ''}${turnActive ? '/turn' : ''}${hearing ? '/hearing' : ''} sac=${detector.sacState} a=${K.a.toFixed(2)} b=${K.b | 0} c=${K.c.toFixed(2)} d=${K.d | 0}${K.active ? '' : ' (off)'}${S.source.debugInfo ? '\n' + S.source.debugInfo() : ''}\n${exprDet.debug()}`;
 }
 
 // ---------- capture ----------
@@ -314,7 +316,7 @@ async function doCapture(ev) {
 
 // ---------- scene log: every real look-jump posts a full-frame snapshot (fire and forget, no UI beyond a tick in chat) ----------
 let lastScene = 0, sceneOff = false, sceneTimer = null;
-async function sceneSnap(ev) {
+async function sceneSnap(ev, extra = {}) {
   const p = S.player, v = S.video;
   if (sceneOff || !p || !v || !S.session || S.state !== 'watch' || S.finished || !p.isPlaying()) return;
   const now = performance.now();
@@ -322,13 +324,13 @@ async function sceneSnap(ev) {
   lastScene = now;
   const token = S.token, videoTime = +p.time().toFixed(2);
   const rect = p.contentRect();
-  const body = { sessionId: S.session, videoTime, videoTitle: v.title, trigger: 'saccade', async: true,
+  const body = { sessionId: S.session, videoTime, videoTitle: v.title, trigger: 'saccade', async: true, ...extra,
     gaze: { x: +Math.min(1, Math.max(0, (ev.x - rect.left) / rect.width)).toFixed(4), y: +Math.min(1, Math.max(0, (ev.y - rect.top) / rect.height)).toFixed(4) } };
   if (v.source === 'youtube') body.youtubeId = v.youtubeId; else { body.image = fullFrame(p); if (!body.image) return; }
   try {
     const r = await api.scene(body);
     if (token !== S.token || r.skipped) return;
-    chatAdd({ who: 'sys', text: `장면 기록 ${fmtTime(videoTime)}`, dm: false });
+    chatAdd({ who: 'sys', text: `장면 기록 ${fmtTime(videoTime)}${extra.expression ? ' (' + extra.expression + ')' : ''}`, dm: false });
     clearTimeout(sceneTimer); sceneTimer = setTimeout(refreshScenes, 6000); // the description takes a few seconds
   } catch (e) {
     if (e.status === 404 && !/session/i.test(JSON.stringify(e.body || {}))) sceneOff = true; // server has no /api/scene
@@ -413,6 +415,28 @@ function onGesture(g) {
   flashBadge(g === 'nod' ? '끄덕' : '도리도리', g === 'nod');
   g === 'nod' ? answerYes(dlg) : answerNo(dlg);
 }
+// ---------- facial expressions (blendshapes from the EyeTheia FaceLandmarker) ----------
+const exprEl = $('#agent-expr');
+let exprSim = null, exprShow = '', exprShowUntil = 0;
+const exprDet = new ExpressionDetector((kind) => exprFire(kind), () => S.state === 'watch' && !!S.player && !S.finished && !asking() && !bubbleActive() && !agentVoice.speaking && !hearing && !turnActive);
+function exprTick(now) {
+  let b = null;
+  if (exprSim && now < exprSim.until) b = SIM[exprSim.kind]; else exprSim = null;
+  if (!b && S.source && S.source.blendshapes) b = S.source.blendshapes();
+  exprDet.update(now, b);
+  const txt = exprDet.cur || (now < exprShowUntil ? exprShow : '');
+  if (txt !== exprEl.dataset.t) { exprEl.dataset.t = txt; exprEl.textContent = txt ? '표정: ' + txt : ''; }
+}
+function exprFire(kind) {
+  const pool = CONFIG.expression.lines[kind], line = pool[(Math.random() * pool.length) | 0];
+  exprShow = kind; exprShowUntil = performance.now() + 2500;
+  activity();
+  chatAdd({ who: 'sys', text: `표정 감지: ${kind}`, dm: false });
+  chatAdd({ who: 'agent', text: line }); speakLine(line); // danmaku + chat + voice
+  const p = S.player;
+  if (p && sm) sceneSnap({ x: sm.x, y: sm.y }, { trigger: 'expression', expression: kind });
+  else if (p) { const r = p.contentRect(); sceneSnap({ x: r.left + r.width / 2, y: r.top + r.height / 2 }, { trigger: 'expression', expression: kind }); }
+}
 // ---------- hand gestures ----------
 function pointNow() { // capture right now at the current gaze point
   if (S.state !== 'watch' || !S.player || !sm || S.finished) return;
@@ -457,6 +481,7 @@ addEventListener('keydown', (e) => {
   else if (e.key === 'p' || e.key === 'P') handAction('Open_Palm');
   else if (e.key === 'i' || e.key === 'I') handAction('Pointing_Up');
   else if (e.key === 'v' || e.key === 'V') handAction('Victory');
+  else if (DEBUG && '123'.includes(e.key) && e.key) exprSim = { kind: ['웃음', '놀람', '찡그림'][+e.key - 1], until: performance.now() + 1200 }; // debug: simulate an expression
   else if (e.key === 'u' || e.key === 'U') handAction('Thumb_Up');
   else if (e.key === 'd' || e.key === 'D') handAction('Thumb_Down');
 });
