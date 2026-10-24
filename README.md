@@ -171,7 +171,7 @@ python3 -m http.server 8123      # 아무 정적 서버면 됨
 **풀 스택 (웹캠, 음성, 실제 에이전트)**
 
 ```bash
-cd server && npm ci && node src/index.mjs   # 127.0.0.1:8788
+cd server && npm ci && npm start   # Node 22+, 127.0.0.1:8788
 ```
 
 Caddy가 `web/`을 정적 서빙하고 `/api`를 Node API로 프록시 (`deploy/Caddyfile`). ASR(Qwen3-ASR)은 `127.0.0.1:8790`, TTS는 `server/tts` 워커 풀. 영상 캐시에 `yt-dlp`와 `ffmpeg` 필요. API 키와 설정은 `AMBITION_*` 환경변수 (`server/src/config.mjs`). 배포 박스 구성은 [`deploy/README.md`](deploy/README.md).
