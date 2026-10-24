@@ -1,5 +1,5 @@
 // DOM helpers: toasts, capture panel, agent bubble, summary.
-import { CONFIG } from './events.js?v=r18';
+import { CONFIG } from './events.js?v=r19';
 
 const $ = (s) => document.querySelector(s);
 export const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -10,17 +10,6 @@ export function toast(msg, ms = 4500) {
   el.className = 'toast'; el.textContent = msg;
   $('#toasts').appendChild(el);
   setTimeout(() => el.remove(), ms);
-}
-
-function linkList(links) {
-  const ul = document.createElement('ul');
-  ul.className = 'links';
-  for (const l of links || []) {
-    const li = document.createElement('li'), a = document.createElement('a');
-    a.href = safeUrl(l.url); a.target = '_blank'; a.rel = 'noopener'; a.textContent = l.title || l.url;
-    li.appendChild(a); ul.appendChild(li);
-  }
-  return ul;
 }
 
 export const CATEGORY_KO = { product: '상품', place: '장소', food: '음식', animal: '동물', text: '글자', person: '인물', scene: '장면', other: '기타' };
@@ -71,7 +60,6 @@ export function chatAdd({ who, text, items, links, dm = true }) {
     remove() { m.remove(); },
   };
   if (items) api.setItems(items);
-  if (links && links.length) api.setItems(links.map((l) => ({ name: l.title || '', url: l.url })));
   chatPush(m);
   return api;
 }
@@ -145,7 +133,6 @@ export function addCapture({ thumb, videoTime, kind }) {
     setError() { li.querySelector('.label').textContent = '분석 실패'; li.classList.add('none'); ml.textContent = '분석 실패'; },
     remove() { li.remove(); m.remove(); capCount--; setCount(); if (!capCount) $('#captures-empty').hidden = false; },
     thumbSrc: () => img.src,
-    showLinks(links) { const ex = li.querySelector('.extra'); ex.innerHTML = ''; ex.appendChild(linkList(links)); },
   };
 }
 
@@ -243,7 +230,7 @@ export function renderSummary(data) {
     const t = document.createElement('span'); t.className = 'time'; t.textContent = fmtTime(r.videoTime || 0);
     const l = document.createElement('strong'); l.textContent = r.label || '';
     const why = document.createElement('span'); why.className = 'desc'; why.textContent = r.reason || '';
-    b.append(t, l, why, linkList(r.links));
+    b.append(t, l, why);
     c.append(img, b); grid.appendChild(c);
   }
   box.appendChild(grid);

@@ -1,6 +1,6 @@
 // Hand gestures: MediaPipe GestureRecognizer (canned gestures) on the same camera video, throttled (~10 fps).
 // Thumb_Up / Thumb_Down fire at once; Open_Palm / Pointing_Up / Victory must be held CONFIG.hands.holdMs.
-import { CONFIG } from './events.js?v=r18';
+import { CONFIG } from './events.js?v=r19';
 
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task';
 const INSTANT = new Set(['Thumb_Up', 'Thumb_Down']);

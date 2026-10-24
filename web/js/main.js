@@ -1,15 +1,15 @@
-import { api, MOCK, PARAMS } from './api.js?v=r18';
-import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r18';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r18';
-import { EyeTheiaSource } from './eyetheia.js?v=r18';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r18';
-import { grab, fullFrame } from './capture.js?v=r18';
-import { toast, addCapture, clearCaptures, renderScenes, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r18';
-import { HeadGestures } from './gesture.js?v=r18';
-import { ExpressionDetector, SIM } from './expression.js?v=r18';
-import { Dwell } from './dwell.js?v=r18';
-import { Voice } from './voice.js?v=r18';
-import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r18';
+import { api, MOCK, PARAMS } from './api.js?v=r19';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r19';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r19';
+import { EyeTheiaSource } from './eyetheia.js?v=r19';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r19';
+import { grab, fullFrame } from './capture.js?v=r19';
+import { toast, addCapture, clearCaptures, renderScenes, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r19';
+import { HeadGestures } from './gesture.js?v=r19';
+import { ExpressionDetector, SIM } from './expression.js?v=r19';
+import { Dwell } from './dwell.js?v=r19';
+import { Voice } from './voice.js?v=r19';
+import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r19';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -370,6 +370,11 @@ function openDialog(card, res) {
 function answerYes(d, said) {
   if (d !== dlg || !d.asking) return;
   d.asking = false;
+  if (d.offer) { // yes to "영상 보실래요?": the server answers with play (video / article)
+    chatAdd({ who: 'user', text: said || '응! (끄덕)' });
+    bubbleLock(); runTurn('', { trigger: 'accept', source: 'voice' });
+    return;
+  }
   if (d.custom) { // thumbs-down "넘길까요?"
     chatAdd({ who: 'user', text: said || '응, 넘겨줘' });
     bubbleLock(); chatAdd({ who: 'agent', text: '좋아요, 넘길게요' }); speakLine('좋아요, 넘길게요');
@@ -381,14 +386,18 @@ function answerYes(d, said) {
   const it = curItem();
   const isText = it.category === 'text';
   bubbleLock(); // the question line goes away; the answer lands in chat + danmaku below
-  chatAdd({ who: 'agent', text: isText && it.description ? it.description : '더 알아볼게요', links: it.links });
-  d.card.showLinks(it.links || []);
-  addWish({ id: d.res.captureId + ':' + d.alt, thumb: d.res.__thumb, label: it.label, category: it.category, links: it.links });
-  speakLine(isText && it.description ? it.description : '더 알아볼게요');
-  setTimeout(() => { if (dlg === d) dismissBubble(); }, isText ? 20000 : 12000); // nothing is clickable: close on its own
+  addWish({ id: d.res.captureId + ':' + d.alt, thumb: d.res.__thumb, label: it.label, category: it.category });
+  if (isText && it.description) { chatAdd({ who: 'agent', text: it.description }); speakLine(it.description); return; }
+  runTurn('', { trigger: 'accept', source: 'voice' }); // content-first: the server looks it up and offers one concrete video/article
 }
 function answerNo(d, said) {
   if (d !== dlg || !d.asking) return;
+  if (d.offer) { // no to an offer: drop it
+    d.asking = false; bubbleLock();
+    chatAdd({ who: 'user', text: said || '아니 (도리도리)' });
+    chatAdd({ who: 'agent', text: '알겠어요' }); speakLine('알겠어요');
+    return;
+  }
   if (d.custom) {
     d.asking = false;
     chatAdd({ who: 'user', text: said || '아니, 계속 볼래' });
@@ -436,6 +445,36 @@ function exprFire(kind) {
   const p = S.player;
   if (p && sm) sceneSnap({ x: sm.x, y: sm.y }, { trigger: 'expression', expression: kind });
   else if (p) { const r = p.contentRect(); sceneSnap({ x: r.left + r.width / 2, y: r.top + r.height / 2 }, { trigger: 'expression', expression: kind }); }
+}
+// ---------- content-first offers (server: offer -> yes -> play) ----------
+const clip = (t, n = 38) => { t = String(t || '').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+function onOffer(ev, token) {
+  if (token !== S.token || !ev || !ev.title) return;
+  const meta = [ev.channel, ev.duration ? fmtTime(ev.duration) : ''].filter(Boolean).join(' · ');
+  chatAdd({ who: 'agent', text: `${ev.kind === 'article' ? '기사' : '영상'} · ${ev.title}${meta ? ' (' + meta + ')' : ''}`, dm: false });
+  const d = { offer: ev, asking: true, token };
+  if (bubbleActive()) dismissBubble();
+  const say = ev.kind === 'article' ? `${clip(ev.title)} 기사 열어볼까요?` : `${clip(ev.title)} 보실래요?`;
+  if (showBubble({ say, onYes: () => answerYes(d), onNo: () => answerNo(d) })) { dlg = d; activity(); }
+}
+async function onPlay(ev, token) {
+  if (!ev || token !== S.token) return;
+  for (let i = 0; i < 20 && agentVoice.speaking; i++) await new Promise((r) => setTimeout(r, 200)); // let "바로 틀어드릴게요" finish
+  if (token !== S.token) return;
+  if (ev.kind === 'article') {
+    const w = window.open(ev.url, '_blank', 'noopener');
+    chatAdd({ who: 'sys', text: w ? `기사 열었어요: ${ev.title}` : `팝업이 막혔어요: ${ev.url}`, dm: false });
+    if (!w) toast('팝업이 막혔어요. 기사 주소는 채팅에 있어요');
+    return;
+  }
+  const url = ev.url || `https://www.youtube.com/watch?v=${ev.youtubeId}`;
+  chatAdd({ who: 'sys', text: '영상 준비 중…', dm: false });
+  let v = null;
+  try { v = (await api.addVideo(url)).video; } catch (e) { toast('영상 추가 실패: ' + (e.body?.error || e.message)); }
+  if (token !== S.token) return;
+  const id = (v && v.youtubeId) || ev.youtubeId;
+  if (!id) return;
+  playVideo({ ...(v || {}), id: (v && v.id) || id, title: ev.title || (v && v.title) || id, channel: (v && v.channel) || ev.channel, source: 'youtube', youtubeId: id, url }); // the embed plays before the cache finishes
 }
 // ---------- hand gestures ----------
 function pointNow() { // capture right now at the current gaze point
@@ -652,7 +691,7 @@ function handleUserText(raw) {
 
 // ---- one turn, shared by the voice/turn (text in) and voice/talk (audio in) paths ----
 function turnView(token, seq, text, trigger, { userLine = true } = {}) {
-  let thinking = null, userAdded = false, items = [];
+  let thinking = null, userAdded = false, items = [], playEv = null;
   const clearThinking = () => { if (thinking) { thinking.remove(); thinking = null; } };
   const begin = () => { // the viewer's line goes into chat/danmaku once the agent really answers (narration picked up by the mic is never shown as the viewer)
     if (!userAdded && trigger === 'user' && userLine && text) { userAdded = true; chatAdd({ who: 'user', text }); }
@@ -660,6 +699,7 @@ function turnView(token, seq, text, trigger, { userLine = true } = {}) {
   return {
     start(early) { if (early) begin(); thinking = chatAdd({ who: 'agent', text: '…', dm: false }); },
     begin, clearThinking,
+    flush() { const e = playEv; playEv = null; if (e) onPlay(e, token); },
     setText(t) { text = t; },
     handle(ev, { audioFromServer }) {
       if (ev.type === 'say') {
@@ -670,6 +710,11 @@ function turnView(token, seq, text, trigger, { userLine = true } = {}) {
         agentVoice.enqueueAudio(ev.seq, ev.sentence, ev.b64 || null);
       } else if (ev.type === 'tool') {
         refreshCall(); // searching: keep "생각 중"
+        if (thinking) thinking.setText('찾는 중…');
+      } else if (ev.type === 'offer') {
+        clearThinking(); onOffer(ev, token);
+      } else if (ev.type === 'play') {
+        clearThinking(); playEv = ev; // runs after the turn's say lines (playing wipes the chat column)
       } else if (ev.type === 'items') {
         clearThinking(); begin(); items = items.concat(ev.items || []);
         chatAdd({ who: 'agent', text: '', items: ev.items });
@@ -745,6 +790,7 @@ async function runTalk(wav) {
     view.clearThinking();
     if (!started && !answered) { scheduleUnduck(500); }
     turnEnd(ctl);
+    view.flush();
   }
   return true;
 }
@@ -754,23 +800,27 @@ async function runTurn(text, { trigger, source }) {
   if (turnCtl) turnCtl.abort();
   agentVoice.stop();
   const ctl = turnCtl = new AbortController();
-  turnActive = true; activity(); duck(true); dlg = null;
+  turnActive = true; activity(); duck(true); dismissBubble(); dlg = null;
   refreshCall();
   const view = turnView(token, seq, text, trigger);
   view.start(true);
   try {
     if (!(await ensureSession(token, v))) return;
-    const body = { sessionId: S.session, text, trigger, source, videoUrl: S.videoUrl, videoTitle: v.title, videoTime: +S.player.time().toFixed(2), gaze: gazeNorm() };
+    const body = { sessionId: S.session, ...(text ? { text } : {}), trigger, source, videoUrl: S.videoUrl, videoTitle: v.title, videoTime: +S.player.time().toFixed(2), gaze: gazeNorm() };
     if (v.source === 'youtube') body.youtubeId = v.youtubeId;
     await api.turn(body, ctl.signal, (ev) => {
       if (token !== S.token || ctl.signal.aborted || seq !== chatSeq) return;
       view.handle(ev, { audioFromServer: false });
     });
   } catch (e) {
-    if (!ctl.signal.aborted && token === S.token) toast('대화 오류: ' + e.message);
+    if (!ctl.signal.aborted && token === S.token) {
+      if (trigger === 'accept' && /409/.test(e.message)) { chatAdd({ who: 'agent', text: '더 찾을 건 없네요' }); speakLine('더 찾을 건 없네요'); }
+      else toast('대화 오류: ' + e.message);
+    }
   } finally {
     view.clearThinking();
     turnEnd(ctl);
+    view.flush();
   }
 }
 
