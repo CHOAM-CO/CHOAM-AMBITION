@@ -1,15 +1,15 @@
-import { api, MOCK, PARAMS } from './api.js?v=r23';
-import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r23';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r23';
-import { EyeTheiaSource } from './eyetheia.js?v=r23';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r23';
-import { grab, fullFrame } from './capture.js?v=r23';
-import { toast, addCapture, clearCaptures, renderScenes, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r23';
-import { HeadGestures } from './gesture.js?v=r23';
-import { ExpressionDetector, SIM } from './expression.js?v=r23';
-import { Dwell } from './dwell.js?v=r23';
-import { Voice } from './voice.js?v=r23';
-import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r23';
+import { api, MOCK, PARAMS } from './api.js?v=r24';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r24';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r24';
+import { EyeTheiaSource } from './eyetheia.js?v=r24';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r24';
+import { grab, fullFrame } from './capture.js?v=r24';
+import { toast, addCapture, clearCaptures, renderScenes, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r24';
+import { HeadGestures } from './gesture.js?v=r24';
+import { ExpressionDetector, SIM } from './expression.js?v=r24';
+import { Dwell } from './dwell.js?v=r24';
+import { Voice } from './voice.js?v=r24';
+import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r24';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -925,7 +925,7 @@ function startNextCountdown(token) {
   }, 1000);
 }
 
-$('#chip-mode').hidden = !(MOCK || MOUSE);
+$('#chip-mode').hidden = !(DEBUG && (MOCK || MOUSE)); // tracker/mode chip: debug only
 $('#chip-mode').textContent = [MOCK && 'mock', MOUSE && 'mouse'].filter(Boolean).join('+');
 $('#hud').hidden = !DEBUG;
 show('landing');
