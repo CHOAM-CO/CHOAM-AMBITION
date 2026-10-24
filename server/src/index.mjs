@@ -7,7 +7,8 @@ import * as store from './store.mjs';
 import { analyzeCrop, summarize, linksFor, visionModel, summaryModel } from './ai.mjs';
 import * as yt from './youtube.mjs';
 import { handleChat } from './chat.mjs';
-import { handleVoiceTurn } from './voice.mjs';
+import { handleVoiceTurn, handleVoiceTalk } from './voice.mjs';
+import { transcribe } from './asr.mjs';
 import { ttsRoute } from '../tts/index.mjs';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -41,15 +42,7 @@ async function handleAsr(req, url) {
   const t0 = Date.now();
   const audio = await readRaw(req);
   if (!audio.length) throw new HttpError(400, 'empty audio body');
-  const lang = ['auto', 'ko', 'en'].includes(url.searchParams.get('lang')) ? url.searchParams.get('lang') : 'auto';
-  const ctx = String(url.searchParams.get('context') || '').slice(0, 500); // hotword bias for Qwen3-ASR's system prompt
-  let r;
-  try {
-    r = await fetch(`${config.asrUrl}/transcribe?lang=${lang}${ctx ? `&context=${encodeURIComponent(ctx)}` : ''}`, { method: 'POST', body: audio, headers: { 'content-type': req.headers['content-type'] || 'application/octet-stream' }, signal: AbortSignal.timeout(30000) });
-  } catch (e) { throw new HttpError(502, `asr unavailable: ${e.message}`); }
-  const txt = await r.text();
-  let j; try { j = JSON.parse(txt); } catch { throw new HttpError(502, `asr bad response (${r.status})`); }
-  if (!r.ok) throw new HttpError(502, `asr error ${r.status}: ${String(j.error || txt).slice(0, 200)}`);
+  const j = await transcribe(audio, { lang: url.searchParams.get('lang') || 'auto', context: url.searchParams.get('context') || '', contentType: req.headers['content-type'] || 'application/octet-stream' });
   return { ...j, totalMs: Date.now() - t0 };
 }
 
@@ -194,6 +187,11 @@ async function route(req, res, url) {
   if (method === 'GET' && (ym = p.match(/^\/api\/youtube\/status\/([^/]+)$/))) return send(res, 200, yt.statusOf(ym[1]));
   if (method === 'POST' && p === '/api/asr') return send(res, 200, await handleAsr(req, url));
   if (method === 'POST' && p === '/api/voice/turn') return handleVoiceTurn(await readJson(req), req, res, { HttpError });
+  if (method === 'POST' && p === '/api/voice/talk') {
+    const audio = await readRaw(req);
+    if (!audio.length) throw new HttpError(400, 'empty audio body');
+    return handleVoiceTalk(audio, req, res, url, { HttpError });
+  }
   if (method === 'POST' && p === '/api/chat') return send(res, 200, await handleChat(await readJson(req), { HttpError }));
   if (method === 'POST' && p === '/api/feedback') return send(res, 200, await handleFeedback(await readJson(req)));
   if (method === 'POST' && p === '/api/summary') return send(res, 200, await handleSummary(await readJson(req)));

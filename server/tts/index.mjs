@@ -61,6 +61,12 @@ if (process.env.AMBITION_TTS_PRELOAD !== '0' && modelsPresent(DIR)) {
   }, 1500).unref();
 }
 
+// In-process synth for other server modules (voice/talk). Returns a WAV Buffer (24 kHz mono 16-bit).
+export async function synthWav(text, voice = DEFAULT_VOICE) {
+  if (!modelsPresent(DIR)) throw bad(503, 'tts model not installed');
+  return getEngine().synth(String(text).slice(0, MAX_CHARS), voice);
+}
+
 // Returns true when it handled the request.
 export async function ttsRoute(req, res, p) {
   if (!p.startsWith('/api/tts')) return false;

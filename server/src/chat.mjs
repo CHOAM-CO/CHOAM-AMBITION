@@ -75,10 +75,10 @@ function historyText(chat) {
 }
 
 // Frames + textual context shared by /api/chat and /api/voice/turn.
-export async function buildContext(session, body, trigger = 'user') {
+export async function buildContext(session, body, trigger = 'user', framesPromise = null) {
   const t0 = Date.now();
   let frames = { full: null, crop: null };
-  try { frames = await yt.grabFrames({ youtubeId: body.youtubeId, videoUrl: body.videoUrl || session.videoUrl }, body.videoTime, body.gaze); }
+  try { frames = await (framesPromise || yt.grabFrames({ youtubeId: body.youtubeId, videoUrl: body.videoUrl || session.videoUrl }, body.videoTime, body.gaze)); }
   catch (e) { log('frame grab failed:', e.message); }
   const caps = (await store.getCaptures(session)).slice(-6);
   const recent = caps.filter((c) => c.item).map((c) => `${c.item.label} (${c.item.category})`);
