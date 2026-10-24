@@ -303,7 +303,7 @@ async function doCapture(ev) {
     res.__thumb = shot.image || res.imageUrl;
     if (ev.force) { // pointing: force the question bubble
       dismissBubble(); dlg = null;
-      res.say = '이거 말씀하시는 거죠?'; res.speak = true;
+      res.say = muted ? '이거 말씀하시는 거죠? 엄지나 끄덕임으로 알려주세요' : '이거 말씀하시는 거죠?'; res.speak = true;
     }
     if (res.speak && res.say && !S.finished) openDialog(card, res);
   } catch (e) {

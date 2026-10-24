@@ -128,7 +128,7 @@ export function nowLine(videoTime, micMuted = false) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: false }).formatToParts(d).map((x) => [x.type, x.value]));
   const h = Number(p.hour) % 24, mi = Number(p.minute), se = Number(p.second);
   const ampm = h < 12 ? '오전' : '오후', h12 = h % 12 === 0 ? 12 : h % 12;
-  return `현재 시각: ${ampm} ${h12}시 ${String(mi).padStart(2, '0')}분 ${String(se).padStart(2, '0')}초 (${KST.format(d)} KST, 24시간제 ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')})\n현재 영상 위치: ${vpos(videoTime)}${micMuted ? '\n사용자 마이크: 꺼짐 (사용자가 주먹으로 음소거함. 음성 대답 불가 — 질문/제안은 엄지(👍/👎)나 고개 끄덕임으로 답할 수 있게 "…보실래요? 👍로 알려주세요"처럼 묻고, 말로 답하라고 하지 말 것)' : ''}`;
+  return `현재 시각: ${ampm} ${h12}시 ${String(mi).padStart(2, '0')}분 ${String(se).padStart(2, '0')}초 (${KST.format(d)} KST, 24시간제 ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')})\n현재 영상 위치: ${vpos(videoTime)}${micMuted ? '\n사용자 마이크: 꺼짐 (사용자가 주먹으로 음소거함. 음성 대답 불가 — 질문/제안은 엄지나 고개로 답할 수 있게 "…보실래요? 엄지 척이나 끄덕임으로 알려주세요"처럼 한국어 단어로 묻고(이모지는 음성에서 사라지니 쓰지 말 것), 말로 답하라고 하지 말 것)' : ''}`;
 }
 
 // One chronological timeline (oldest -> newest, last `limit`): scene log + gaze captures + yes/no feedback.
