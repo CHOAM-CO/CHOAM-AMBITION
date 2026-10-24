@@ -42,24 +42,46 @@ export async function fetchPageText(url, max = 3500) {
   return decode(html.replace(/<(script|style|nav|footer|header)[\s\S]*?<\/\1>/gi, ' ')).slice(0, max);
 }
 
-export async function webSearch(query) {
-  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-  try {
-    const html = await fetchText(searchUrl);
+async function ddgSearch(query) {
+  const html = await fetchText(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`);
+  const out = [];
+  for (const m of html.matchAll(/<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)) {
+    let u = m[1].replace(/&amp;/g, '&');
+    const g = /[?&]uddg=([^&]+)/.exec(u); if (g) u = decodeURIComponent(g[1]);
+    if (u.startsWith('//')) u = 'https:' + u;
+    if (!/^https?:\/\//.test(u)) continue;
+    const tail = html.slice(m.index, m.index + 2500);
+    const sn = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/.exec(tail);
+    out.push({ name: decode(m[2]).slice(0, 120), url: u, source: 'web', ...(sn ? { snippet: decode(sn[1]).slice(0, 240) } : {}) });
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+// Google News RSS (Korean): fresh headlines with dates (headlines usually carry scores/outcomes). Falls back to a shorter query when empty.
+async function newsSearch(query) {
+  const one = async (q) => {
+    const xml = await fetchText(`https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=ko&gl=KR&ceid=KR:ko`);
     const out = [];
-    for (const m of html.matchAll(/<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)) {
-      let u = m[1].replace(/&amp;/g, '&');
-      const g = /[?&]uddg=([^&]+)/.exec(u); if (g) u = decodeURIComponent(g[1]);
-      if (u.startsWith('//')) u = 'https:' + u;
-      if (!/^https?:\/\//.test(u)) continue;
-      const tail = html.slice(m.index, m.index + 2500);
-      const sn = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/.exec(tail);
-      out.push({ name: decode(m[2]).slice(0, 120), url: u, source: 'web', ...(sn ? { snippet: decode(sn[1]).slice(0, 240) } : {}) });
-      if (out.length >= 5) break;
+    for (const m of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
+      const g = (t) => { const r = new RegExp(`<${t}[^>]*>([\\s\\S]*?)</${t}>`).exec(m[1]); return r ? decode(r[1].replace(/<!\[CDATA\[|\]\]>/g, '')) : ''; };
+      const link = g('link'), title = g('title'); if (!link || !title) continue;
+      const pd = g('pubDate'); const d = pd ? new Date(pd) : null;
+      out.push({ name: title.slice(0, 140), url: link, source: g('source') || 'news', ...(d && !isNaN(d) ? { published: d.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }).slice(0, 16) + ' KST' } : {}) });
+      if (out.length >= 6) break;
     }
-    if (out.length) return { results: out };
-  } catch (e) { log('web search failed', e.message); }
-  return { results: [{ name: `웹 검색: ${query}`, url: `https://search.naver.com/search.naver?query=${encodeURIComponent(query)}`, source: 'naver' }], note: 'search results unavailable; only the search URL' };
+    return out;
+  };
+  let r = await one(query);
+  if (!r.length) { const short = query.split(/\s+/).slice(0, 3).join(' '); if (short && short !== query) r = await one(short); }
+  return r;
+}
+
+export async function webSearch(query) {
+  const [news, web] = await Promise.all([newsSearch(query).catch((e) => { log('news search failed', e.message); return []; }), ddgSearch(query).catch((e) => { log('web search failed', e.message); return []; })]);
+  const out = [...news.slice(0, 5), ...web.slice(0, 4)];
+  if (out.length) return { results: out };
+  return { results: [{ name: `웹 검색: ${query}`, url: `https://search.naver.com/search.naver?query=${encodeURIComponent(query)}`, source: 'naver' }], note: 'search results unavailable; only the search URL. Try a shorter/broader query once.' };
 }
 
 const GATE_SYSTEM = `You are the voice of a friendly shopping/video assistant that watches a video together with the viewer. The viewer speaks; you receive speech-to-text. The microphone also picks up the VIDEO'S OWN AUDIO (narration, vlogger talk, music lyrics), so first decide whether the text is the viewer addressing the assistant.
