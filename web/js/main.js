@@ -335,6 +335,7 @@ async function sceneSnap(ev) {
     else if (e.status === 404) S.session = null;
   }
 }
+setInterval(() => { if (S.state === 'watch' && !$('#scenebox').classList.contains('collapsed')) refreshScenes(); }, 5000); // poll while the tab is open
 async function refreshScenes() {
   if (!S.session || sceneOff || MOCK) return;
   const token = S.token;
