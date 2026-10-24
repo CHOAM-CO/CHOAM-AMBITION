@@ -1,4 +1,4 @@
-import { CONFIG } from './events.js?v=r21';
+import { CONFIG } from './events.js?v=r22';
 // Gaze sources: WebGazer (webcam) or mouse. Exposes latest raw point in client px.
 const WEBGAZER_SRC = 'https://cdn.jsdelivr.net/npm/webgazer@3.4.0/dist/webgazer.min.js';
 

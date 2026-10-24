@@ -1,7 +1,7 @@
 // Facial expressions from MediaPipe FaceLandmarker blendshapes (EyeTheia source, same model, no extra inference).
 // Each kind is a 0..1 score; it must stay >= its threshold for holdMs, then fires once, then sleeps cooldownMs.
 // All thresholds are guesses: CONFIG.expression (live-tunable via window.AMBITION_CONFIG), live scores in ?debug=1.
-import { CONFIG } from './events.js?v=r21';
+import { CONFIG } from './events.js?v=r22';
 
 const avg = (b, ...k) => k.reduce((s, n) => s + (b[n] || 0), 0) / k.length;
 

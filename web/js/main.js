@@ -1,15 +1,15 @@
-import { api, MOCK, PARAMS } from './api.js?v=r21';
-import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r21';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r21';
-import { EyeTheiaSource } from './eyetheia.js?v=r21';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r21';
-import { grab, fullFrame } from './capture.js?v=r21';
-import { toast, addCapture, clearCaptures, renderScenes, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r21';
-import { HeadGestures } from './gesture.js?v=r21';
-import { ExpressionDetector, SIM } from './expression.js?v=r21';
-import { Dwell } from './dwell.js?v=r21';
-import { Voice } from './voice.js?v=r21';
-import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r21';
+import { api, MOCK, PARAMS } from './api.js?v=r22';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r22';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r22';
+import { EyeTheiaSource } from './eyetheia.js?v=r22';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r22';
+import { grab, fullFrame } from './capture.js?v=r22';
+import { toast, addCapture, clearCaptures, renderScenes, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r22';
+import { HeadGestures } from './gesture.js?v=r22';
+import { ExpressionDetector, SIM } from './expression.js?v=r22';
+import { Dwell } from './dwell.js?v=r22';
+import { Voice } from './voice.js?v=r22';
+import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r22';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -155,7 +155,7 @@ function goHome() {
 
 // ---------- watch ----------
 function teardown() {
-  S.token++;
+  S.token++; if (typeof closeReader === 'function') closeReader(false);
   clearInterval(S.nextTimer);
   dismissBubble(); dlg = null;
   if (S.player) { try { S.player.destroy(); } catch {} S.player = null; }
@@ -461,12 +461,7 @@ async function onPlay(ev, token) {
   if (!ev || token !== S.token) return;
   for (let i = 0; i < 20 && agentVoice.speaking; i++) await new Promise((r) => setTimeout(r, 200)); // let "바로 틀어드릴게요" finish
   if (token !== S.token) return;
-  if (ev.kind === 'article') {
-    const w = window.open(ev.url, '_blank', 'noopener');
-    chatAdd({ who: 'sys', text: w ? `기사 열었어요: ${ev.title}` : `팝업이 막혔어요: ${ev.url}`, dm: false });
-    if (!w) toast('팝업이 막혔어요. 기사 주소는 채팅에 있어요');
-    return;
-  }
+  if (ev.kind === 'article') { openReader(ev); return; }
   const url = ev.url || `https://www.youtube.com/watch?v=${ev.youtubeId}`;
   chatAdd({ who: 'sys', text: '영상 준비 중…', dm: false });
   let v = null;
@@ -476,6 +471,46 @@ async function onPlay(ev, token) {
   if (!id) return;
   playVideo({ ...(v || {}), id: (v && v.id) || id, title: ev.title || (v && v.title) || id, channel: (v && v.channel) || ev.channel, source: 'youtube', youtubeId: id, url }); // the embed plays before the cache finishes
 }
+// ---------- article reader (in-page, no popups) ----------
+const readerEl = $('#reader'), rdBody = $('#rd-body');
+let readerPausedVideo = false, readerSeq = 0;
+const readerOpen = () => !readerEl.hidden;
+const CLOSE_RE = /(닫아|닫기|닫을|그만|끄자|꺼줘|꺼 줘)/;
+function rdLink(a, ev) { // plain clickable card (a real click may open a tab, no popup block)
+  const c = document.createElement('a'); c.className = 'rd-card'; c.href = /^https?:\/\//i.test(a.url) ? a.url : '#'; c.target = '_blank'; c.rel = 'noopener';
+  const s = document.createElement('small'); s.textContent = (a.site || ev.site || '기사') + ' · 눌러서 열기';
+  const t = document.createElement('strong'); t.textContent = a.title || ev.title || '';
+  c.append(s, t); return c;
+}
+async function openReader(ev) {
+  const seq = ++readerSeq;
+  $('#rd-site').textContent = ev.site || '';
+  rdBody.innerHTML = ''; rdBody.scrollTop = 0;
+  const h = document.createElement('h2'); h.textContent = ev.title || ''; const ld = document.createElement('p'); ld.className = 'rd-meta'; ld.textContent = '불러오는 중…';
+  rdBody.append(h, ld);
+  if (!readerOpen()) { readerPausedVideo = !!(S.player && S.player.isPlaying()); if (readerPausedVideo) S.player.pause(); }
+  readerEl.hidden = false; activity();
+  const a = await api.article(ev.url);
+  if (seq !== readerSeq || !readerOpen()) return;
+  rdBody.innerHTML = '';
+  if (a.error || !a.paragraphs || !a.paragraphs.length) { rdBody.append(h, rdLink(a, ev)); return; } // reader failed: normal link card
+  $('#rd-site').textContent = a.site || ev.site || '';
+  const meta = document.createElement('p'); meta.className = 'rd-meta';
+  meta.textContent = [a.byline, a.publishedAt ? String(a.publishedAt).slice(0, 10) : ''].filter(Boolean).join(' · ');
+  h.textContent = a.title || ev.title || '';
+  rdBody.append(h); if (meta.textContent) rdBody.append(meta);
+  if (a.image && /^https?:\/\//i.test(a.image)) { const im = document.createElement('img'); im.alt = ''; im.referrerPolicy = 'no-referrer'; im.onerror = () => im.remove(); im.src = a.image; rdBody.append(im); }
+  if (a.summary) { const l = document.createElement('p'); l.className = 'rd-lead'; l.textContent = a.summary; rdBody.append(l); }
+  for (const t of a.paragraphs) { const p = document.createElement('p'); p.textContent = t; rdBody.append(p); }
+}
+function closeReader(resume = true) {
+  if (!readerOpen()) return false;
+  readerSeq++; readerEl.hidden = true; rdBody.innerHTML = '';
+  if (resume && readerPausedVideo && S.player) S.player.play();
+  readerPausedVideo = false; return true;
+}
+$('#rd-close').addEventListener('click', () => closeReader());
+dwell.register($('#rd-close'), () => closeReader(), { group: 'watch', enabled: readerOpen });
 // ---------- hand gestures ----------
 function pointNow() { // capture right now at the current gaze point
   if (S.state !== 'watch' || !S.player || !sm || S.finished) return;
@@ -506,9 +541,9 @@ function handAction(name) {
     case 'Closed_Fist': if (watching) fistMute(); break;
     case 'Thumb_Up': if (asking()) answerYes(dlg); else if (watching && !S.finished) reactThumb(true); break;
     case 'Thumb_Down': if (asking()) answerNo(dlg); else if (watching && !S.finished) reactThumb(false); break;
-    case 'Open_Palm': if (watching) { chatAdd({ who: 'sys', text: S.player.isPlaying() ? '멈춤' : '재생' }); S.player.isPlaying() ? S.player.pause() : S.player.play(); } break;
+    case 'Open_Palm': if (readerOpen()) { closeReader(); chatAdd({ who: 'sys', text: '기사 닫음', dm: false }); } else if (watching) { chatAdd({ who: 'sys', text: S.player.isPlaying() ? '멈춤' : '재생' }); S.player.isPlaying() ? S.player.pause() : S.player.play(); } break;
     case 'Pointing_Up': if (watching) { chatAdd({ who: 'sys', text: '이거!' }); pointNow(); } break;
-    case 'Victory': if (watching || S.state === 'summary') { chatAdd({ who: 'sys', text: '다음 영상' }); goNext(); } break;
+    case 'Victory': if (readerOpen()) { closeReader(); chatAdd({ who: 'sys', text: '기사 닫음', dm: false }); } else if (watching || S.state === 'summary') { chatAdd({ who: 'sys', text: '다음 영상' }); goNext(); } break;
   }
 }
 
@@ -516,7 +551,7 @@ function handAction(name) {
 addEventListener('keydown', (e) => {
   if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName) || e.metaKey || e.ctrlKey) return;
   if (e.key === 'y' || e.key === 'Y') onGesture('nod');
-  else if (e.key === 'n' || e.key === 'N') onGesture('shake');
+  else if (e.key === 'n' || e.key === 'N') { if (!closeReader()) onGesture('shake'); }
   else if (e.key === 'm' || e.key === 'M') toggleMute();
   else if (e.key === 'p' || e.key === 'P') handAction('Open_Palm');
   else if (e.key === 'i' || e.key === 'I') handAction('Pointing_Up');
@@ -680,6 +715,7 @@ dwell.register($('#chip-mic'), toggleMute, { group: 'watch' });
 
 // an open yes/no question: whatever the viewer says is the answer. returns true when handled locally
 function localAnswer(text) {
+  if (readerOpen() && CLOSE_RE.test(text) && text.length <= 12) { agentVoice.stop(); caption(text); closeReader(); chatAdd({ who: 'sys', text: '기사 닫음', dm: false }); return true; }
   if (!asking()) return false;
   const a = matchAnswer(text);
   if (!a) return false;
@@ -781,7 +817,7 @@ async function runTalk(wav) {
             if (!t) { ctl.abort(); return; }
             heard = t; caption(t); view.setText(t);
             if (isEcho(t)) { ctl.abort(); return; } // the agent hearing itself
-            if (wasAsking && asking() && localAnswer(t)) { answered = true; ctl.abort(); return; }
+            if ((wasAsking || readerOpen()) && localAnswer(t)) { answered = true; ctl.abort(); return; }
             if (t.length <= CONFIG.voice.minChars && !wasAsking) { ctl.abort(); return; }
             started = true; view.start();
           } else if (ev.type === 'answer') {

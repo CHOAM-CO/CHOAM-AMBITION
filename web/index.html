@@ -7,7 +7,7 @@
 <meta name="description" content="NUNCHI: 눈치 있는 AI. 시선과 표정, 목소리로 같이 영상을 보는 에이전트">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<link rel="stylesheet" href="style.css?v=r21">
+<link rel="stylesheet" href="style.css?v=r22">
 </head>
 <body>
 <header class="top">
@@ -69,6 +69,7 @@
         <div id="player" class="player"></div>
         <div id="danmaku"></div>
         <div id="bubble-slot"></div>
+        <div id="reader" hidden><div class="rd-head"><span id="rd-site"></span><button id="rd-close" class="rd-x" aria-label="닫기">✕</button></div><div id="rd-body" class="rd-body"></div></div>
         <div id="cam"><div id="hand-ind" hidden><span class="hi-ring"><span class="hi-emo"></span></span><span class="hi-name"></span></div></div>
         <div id="pbar"><div class="pb-line"><i id="pb-fill"></i></div><div class="pb-row"><span id="pb-play" class="pb-play"></span><span id="pb-time">00:00 / 00:00</span></div></div>
       </div>
@@ -118,6 +119,6 @@
 <div id="gaze-dot"></div><div id="gesture-badge"></div>
 <div id="hud" class="hud" hidden></div>
 <div id="toasts"></div>
-<script type="module" src="js/main.js?v=r21"></script>
+<script type="module" src="js/main.js?v=r22"></script>
 </body>
 </html>
