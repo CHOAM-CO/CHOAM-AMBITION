@@ -1,5 +1,5 @@
 // DOM helpers: toasts, capture panel, agent bubble, summary.
-import { CONFIG } from './events.js?v=r15';
+import { CONFIG } from './events.js?v=r16';
 
 const $ = (s) => document.querySelector(s);
 export const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -42,22 +42,19 @@ function chatPush(el) {
   f.scrollTop = f.scrollHeight;
   return el;
 }
-// Chzzk/Twitch-style chat line: [badge] nickname: text, nickname coloured per speaker, auto-scroll
-function msgShell(cls, avatar, who, badge) {
+// Chzzk chat line: coloured nickname + text, one row per message, auto-scroll
+function msgShell(cls, who) {
   const m = document.createElement('div'); m.className = 'msg ' + cls;
-  const av = document.createElement('span'); av.className = 'av'; av.textContent = avatar;
   const mb = document.createElement('div'); mb.className = 'mb';
-  if (badge) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = badge; mb.appendChild(b); }
   const w = document.createElement('span'); w.className = 'who'; w.textContent = who;
-  mb.appendChild(w); m.append(av, mb);
+  mb.appendChild(w); m.appendChild(mb);
   return { m, mb };
 }
-/** who: 'agent' | 'user' | 'sys' (gesture / event line). returns {setText, setItems, remove} */
-export function chatAdd({ who, text, items, links, badge }) {
-  const { m, mb } = who === 'agent' ? msgShell('agent', 'AI', '에이전트', 'AI')
-    : who === 'sys' ? msgShell('sys', '', '', badge || '제스처')
-    : msgShell('user', '나', '나', badge || '');
+/** who: 'agent' | 'user' | 'sys' (gesture / event line). Agent and viewer lines also fly over the video as danmaku. returns {setText, setItems, remove} */
+export function chatAdd({ who, text, items, links, dm = true }) {
+  const { m, mb } = who === 'agent' ? msgShell('agent', '에이전트') : who === 'sys' ? msgShell('sys', '') : msgShell('user', '나');
   const t = document.createElement('span'); t.className = 'txt'; t.textContent = text || ''; mb.appendChild(t);
+  if (dm && text && text !== '…') danmaku(text, who);
   const api = {
     setText(x) { t.textContent = x; feed().scrollTop = feed().scrollHeight; },
     setItems(its) {
@@ -79,6 +76,42 @@ export function chatAdd({ who, text, items, links, badge }) {
   return api;
 }
 
+// ---- danmaku: Bilibili/Niconico bullet comments over the video. Constant ~8 s pass, lanes in the top 2/3, no boxes ----
+const DM_MS = 8000;
+const lanes = []; // per lane: {t, w} of the last comment sent through it
+let dmQ = [], dmTimer = null;
+export function danmakuClear() { const l = $('#danmaku'); if (l) l.innerHTML = ''; lanes.length = 0; dmQ = []; }
+function dmPlace(text, kind) {
+  const layer = $('#danmaku'); if (!layer) return true;
+  const W = layer.clientWidth, H = layer.clientHeight; if (!W) return true;
+  const fs = Math.max(16, Math.round(W * 0.03)), laneH = Math.round(fs * 1.3), top0 = Math.round(fs * 1.3) + 22, n = Math.max(1, Math.floor((H * 0.66 - top0) / laneH)); // lanes start under the pinned question line
+  const el = document.createElement('span'); el.className = 'dm ' + (kind === 'user' ? 'user' : kind === 'sys' ? 'sys' : 'agent');
+  el.textContent = text.length > 70 ? text.slice(0, 70) + '…' : text; el.style.fontSize = (kind === 'sys' ? Math.round(fs * .85) : fs) + 'px';
+  el.style.visibility = 'hidden'; layer.appendChild(el);
+  const w = el.offsetWidth, now = performance.now();
+  for (let i = 0; i < n; i++) {
+    const l = lanes[i];
+    // no collision with the previous comment in this lane: its tail is clear, and the newer (faster, if longer) one cannot catch up before it leaves
+    const need = l ? DM_MS * Math.max(l.w / (W + l.w), w / (W + w)) + 300 : 0;
+    if (l && now - l.t < need) continue;
+    lanes[i] = { t: now, w };
+    el.style.top = top0 + i * laneH + 'px'; el.style.setProperty('--dur', DM_MS + 'ms'); el.style.setProperty('--cw', W + 'px'); el.style.visibility = '';
+    el.style.transform = ''; el.addEventListener('animationend', () => el.remove());
+    return true;
+  }
+  el.remove(); return false;
+}
+export function danmaku(text, kind = 'agent', { transient = false } = {}) {
+  if (!text) return;
+  if (dmPlace(text, kind)) return;
+  if (transient) return; // reactions are dropped when the lanes are busy
+  dmQ.push({ text, kind }); if (dmQ.length > 4) dmQ.shift();
+  if (!dmTimer) dmTimer = setInterval(() => {
+    while (dmQ.length && dmPlace(dmQ[0].text, dmQ[0].kind)) dmQ.shift();
+    if (!dmQ.length) { clearInterval(dmTimer); dmTimer = null; }
+  }, 400);
+}
+
 export function addCapture({ thumb, videoTime, kind }) {
   $('#captures-empty').hidden = true;
   const li = document.createElement('li');
@@ -93,7 +126,7 @@ export function addCapture({ thumb, videoTime, kind }) {
   $('#captures').scrollTo({ left: 0, behavior: 'smooth' }); // newest first: keep it in view
   capCount++; setCount();
   // the same event as a live-chat message with its thumbnail
-  const { m, mb } = msgShell('cap-msg', '📷', `장면 캡처 · ${fmtTime(videoTime)}`, '📷');
+  const { m, mb } = msgShell('cap-msg', `장면 캡처 · ${fmtTime(videoTime)}`);
   const mini = document.createElement('div'); mini.className = 'mini';
   const mi = document.createElement('img'); mi.alt = ''; if (thumb) mi.src = thumb;
   const mt = document.createElement('div'); const ml = document.createElement('strong'); ml.textContent = '분석 중…'; const mg = document.createElement('span'); mg.className = 'tag'; mg.hidden = true;
@@ -140,31 +173,8 @@ export function addWish({ id, thumb, label, category, links }) {
   window.dispatchEvent(new CustomEvent('wish-added'));
 }
 
-// donation-alert header (Toonation/Twip style): agent avatar + name + amount-like badge
-function donHead(badge) {
-  const h = document.createElement('div'); h.className = 'don-head';
-  const a = document.createElement('span'); a.className = 'don-av'; a.textContent = 'AI';
-  const n = document.createElement('b'); n.textContent = '에이전트';
-  const t = document.createElement('span'); t.className = 'don-badge'; t.textContent = badge;
-  h.append(a, n, t); return h;
-}
-
-// transient donation alerts (reactions, acks): one at a time, queued so they never overlap
-const alertQ = []; let alertBusy = false;
-export function alertPop({ text, emoji = '💬', badge = '반응', ms = 2600 }) {
-  if (alertQ.length >= 3) alertQ.shift();
-  alertQ.push({ text, emoji, badge, ms }); nextAlert();
-}
-function nextAlert() {
-  if (alertBusy || !alertQ.length) return;
-  const { text, emoji, badge, ms } = alertQ.shift();
-  alertBusy = true;
-  const el = document.createElement('div'); el.className = 'don-alert';
-  const big = document.createElement('div'); big.className = 'don-line'; big.textContent = `${emoji} ${text}`;
-  el.append(donHead(badge), big);
-  $('#alert-slot').appendChild(el);
-  setTimeout(() => { el.classList.add('out'); setTimeout(() => { el.remove(); alertBusy = false; nextAlert(); }, 300); }, ms);
-}
+/** transient reaction: a single danmaku line (dropped when the lanes are busy) */
+export function alertPop({ text }) { danmaku(text, 'agent', { transient: true }); }
 
 // live hand-gesture indicator next to the agent cam: emoji + name, ring fills while a held gesture is being held
 const HAND = { Thumb_Up: ['👍', '좋아요'], Thumb_Down: ['👎', '별로'], Open_Palm: ['✋', '멈춤/재생'], Pointing_Up: ['☝️', '이거'], Victory: ['✌️', '다음'], Closed_Fist: ['✊', '주먹'], ILoveYou: ['🤟', '사랑해'] };
@@ -179,74 +189,36 @@ export function handShow(name, progress = 0, mapped = true, hideMs = 450) {
 }
 export function handHide() { /* feedback gap: the timer hides it */ }
 
+// yes/no question: one small translucent line pinned at the top centre of the video, with a thin timeout underline
 let bubbleEl = null, bubbleTimer = null, bubbleText = null;
 export const bubbleActive = () => !!bubbleEl;
 export function dismissBubble() {
   clearTimeout(bubbleTimer);
   if (bubbleEl) { bubbleEl.remove(); bubbleEl = null; bubbleText = null; }
 }
-/** opens the question bubble; returns false if one is already open (one at a time) */
-export function showBubble({ say, onYes, onNo, yesLabel = '찾아봐', noLabel = '괜찮아', badge = '질문' }) {
+/** opens the question line; returns false if one is already open (one at a time) */
+export function showBubble({ say, onYes, onNo, keys = '👍 / 👎' }) {
   if (bubbleEl) return false;
-  const el = document.createElement('div');
-  el.className = 'bubble';
-  bubbleText = document.createElement('p'); bubbleText.textContent = say;
-  const row = document.createElement('div'); row.className = 'row'; row.dataset.role = 'choices';
-  const yes = document.createElement('button'); yes.className = 'btn primary'; yes.textContent = yesLabel;
-  const no = document.createElement('button'); no.className = 'btn'; no.textContent = noLabel;
-  yes.onclick = onYes; no.onclick = onNo;
-  row.append(yes, no);
-  el.append(donHead(badge), bubbleText, row);
+  const el = document.createElement('div'); el.className = 'ask';
+  const W = ($('#danmaku') || {}).clientWidth || 800;
+  el.style.fontSize = Math.max(16, Math.round(W * 0.03)) + 'px';
+  bubbleText = document.createElement('span'); bubbleText.textContent = say;
+  const k = document.createElement('span'); k.className = 'ask-keys';
+  const y = document.createElement('span'); y.textContent = '👍'; y.onclick = onYes;
+  const n = document.createElement('span'); n.textContent = '👎'; n.onclick = onNo;
+  k.append(y, document.createTextNode(' / '), n);
+  const bar = document.createElement('i'); bar.className = 'ask-bar'; bar.style.setProperty('--ttl', CONFIG.bubbleTtlMs + 'ms');
+  el.append(bubbleText, k, bar);
   $('#bubble-slot').appendChild(el);
   bubbleEl = el;
   bubbleTimer = setTimeout(dismissBubble, CONFIG.bubbleTtlMs);
   return true;
 }
+/** change the question text (next alternative) */
 export function bubbleSay(text) { if (bubbleText) bubbleText.textContent = text; }
-/** remove the yes/no buttons (answered) */
-export function bubbleLock() { const r = bubbleEl && bubbleEl.querySelector('[data-role=choices]'); if (r) r.remove(); }
-export function bubbleLinks(links) {
-  if (!bubbleEl) return;
-  bubbleLock();
-  bubbleEl.querySelectorAll('.links, .muted, [data-role=close]').forEach((n) => n.remove());
-  if (links && links.length) bubbleEl.appendChild(linkList(links));
-  const close = document.createElement('button'); close.className = 'btn'; close.textContent = '닫기'; close.dataset.role = 'close'; close.onclick = dismissBubble;
-  bubbleEl.appendChild(close);
-}
-
-/** voice-chat bubble: text first ("찾아보는 중…"), then reply + item cards. Replaces any open bubble. */
-let chatTimer = null;
-export function openChatBubble(text) {
-  dismissBubble();
-  const el = document.createElement('div');
-  el.className = 'bubble chat';
-  bubbleText = document.createElement('p'); bubbleText.textContent = text;
-  el.append(donHead('답변'), bubbleText);
-  $('#bubble-slot').appendChild(el);
-  bubbleEl = el;
-  bubbleTimer = setTimeout(dismissBubble, 60000);
-  return el;
-}
+/** answered: the question line goes away */
+export function bubbleLock() { dismissBubble(); }
 const shortUrl = (u) => { try { const x = new URL(u); return x.host.replace(/^www\./, '') + (x.pathname.length > 1 ? x.pathname.slice(0, 24) : ''); } catch { return (u || '').slice(0, 36); } };
-export function updateChatBubble(el, { text, items, ttlMs = 25000 }) {
-  if (el !== bubbleEl) return false; // replaced meanwhile
-  bubbleText.textContent = text;
-  el.querySelectorAll('.chat-items').forEach((n) => n.remove());
-  if (items && items.length) {
-    const box = document.createElement('div'); box.className = 'chat-items';
-    for (const it of items) {
-      const c = document.createElement('div'); c.className = 'chat-item';
-      const n = document.createElement('strong'); n.textContent = it.name || '';
-      c.appendChild(n);
-      if (it.price) { const p = document.createElement('span'); p.className = 'price'; p.textContent = it.price; c.appendChild(p); }
-      const u = document.createElement('span'); u.className = 'plain-link'; u.textContent = `${it.source ? it.source + ' · ' : ''}${shortUrl(it.url)}`; c.appendChild(u);
-      box.appendChild(c);
-    }
-    el.appendChild(box);
-  }
-  clearTimeout(bubbleTimer); bubbleTimer = setTimeout(dismissBubble, ttlMs);
-  return true;
-}
 
 let badgeTimer = null;
 export function flashBadge(text, ok) {

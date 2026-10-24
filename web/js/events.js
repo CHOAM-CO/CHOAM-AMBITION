@@ -28,7 +28,7 @@ export const CONFIG = {
   // capture gating
   dedupeRadiusPx: 150,          // skip a capture if close to the previous one ...
   dedupeWithinMs: 3000,         // ... and this recent (fixation right after its own saccade landing)
-  minGapMs: 700,                // global cooldown between captures
+  minGapMs: 8000,               // global cooldown between captures (r16: calm agent; was 700)
 
   // image
   cropRatio: 0.55,              // square side = ratio * short side of the video frame (clamped inside the frame)
@@ -65,7 +65,9 @@ export const CONFIG = {
   // voice chat
   voice: { duckLevel: 0.15, minChars: 2 }, // duck the video to 15% while either side talks; ignore finals of <= minChars
   // call mode (VAD + ASR + streamed TTS)
-  call: { positiveThreshold: 0.6, negativeThreshold: 0.4, redemptionMs: 800, minSpeechMs: 400, preSpeechPadMs: 300, idleMs: 45000, speakDialogs: true },
+  call: { positiveThreshold: 0.6, negativeThreshold: 0.4, redemptionMs: 500, minSpeechMs: 400, preSpeechPadMs: 300, idleMs: 45000, speakDialogs: true,
+    // while the agent's TTS plays its own sound leaks into the mic: stricter VAD + longer minimum for barge-in
+    speaking: { positiveThreshold: 0.9, minSpeechMs: 700 }, echoOverlap: 0.7, quietMs: 30000 },
 
   // gaze-dwell buttons (home cards, watch/summary controls)
   dwell: { ms: 1500, marginPx: 24, lockMs: 1000 },

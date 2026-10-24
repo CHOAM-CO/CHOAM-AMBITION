@@ -19,7 +19,7 @@ export function createMp4Player(host, url) {
   host.innerHTML = '';
   setAspect(host, 16, 9);
   const v = document.createElement('video');
-  v.src = url; v.controls = true; v.playsInline = true; v.preload = 'auto';
+  v.src = url; v.controls = false; v.playsInline = true; v.preload = 'auto';
   host.appendChild(v);
   v.addEventListener('loadedmetadata', () => v.videoWidth && setAspect(host, v.videoWidth, v.videoHeight));
   let endedCb = () => {};
@@ -28,6 +28,7 @@ export function createMp4Player(host, url) {
     kind: 'mp4', el: v,
     isPlaying: () => !v.paused && !v.ended && v.readyState >= 2,
     time: () => v.currentTime || 0,
+    duration: () => (isFinite(v.duration) ? v.duration : 0),
     contentRect() { // letterbox-aware picture rect
       const r = v.getBoundingClientRect();
       if (!v.videoWidth) return r;
@@ -68,7 +69,7 @@ export async function createYouTubePlayer(host, yt) {
   const p = await new Promise((res) => {
     const player = new YT.Player('yt-target', {
       videoId: yt.id, width: '100%', height: '100%',
-      playerVars: { playsinline: 1, rel: 0, autoplay: 1, origin: location.origin },
+      playerVars: { controls: 0, disablekb: 1, fs: 0, playsinline: 1, rel: 0, autoplay: 1, origin: location.origin },
       events: {
         onReady: () => { try { player.unMute(); player.playVideo(); } catch {} res(player); },
         onStateChange: (e) => { state = e.data; if (e.data === 0) endedCb(); },
@@ -81,6 +82,7 @@ export async function createYouTubePlayer(host, yt) {
     kind: 'youtube', el: host,
     isPlaying: () => state === 1,
     time: () => { try { return p.getCurrentTime() || 0; } catch { return 0; } },
+    duration: () => { try { return p.getDuration() || 0; } catch { return 0; } },
     contentRect: () => host.getBoundingClientRect(),
     onEnded: (cb) => { endedCb = cb; },
     getVolume: () => { try { return p.getVolume() / 100; } catch { return 1; } },

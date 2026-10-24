@@ -1,5 +1,5 @@
 // Thin API client. ?mock=1 swaps every /api call for local fake responses.
-import { mockApi } from './mock.js?v=r15';
+import { mockApi } from './mock.js?v=r16';
 
 export const PARAMS = new URLSearchParams(location.search);
 export const MOCK = PARAMS.get('mock') === '1';
@@ -65,8 +65,38 @@ async function turn(body, signal, onEvent) {
   if (buf.trim()) { try { onEvent(JSON.parse(buf.trim())); } catch {} }
 }
 
+let talkOk = null; // null = unknown, false = server has no /api/voice/talk (404): use asr + turn
+/** POST /api/voice/talk (wav in; NDJSON out incl. per-sentence audio). Resolves true when it ran, false when the endpoint does not exist.
+ *  Throws an Error with .status/.body on other failures (404 with a sessionId error means the session is unknown). */
+async function talk(wav, params, signal, onEvent) {
+  if (MOCK || talkOk === false) return false;
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v != null && v !== '') q.set(k, String(v));
+  const r = await fetch('/api/voice/talk?' + q, { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: wav, signal });
+  if (!r.ok) {
+    const body = await r.json().catch(() => null);
+    if (r.status === 404 && !/session/i.test(JSON.stringify(body || {}))) { talkOk = false; return false; }
+    const err = new Error(`talk ${r.status}`); err.status = r.status; err.body = body; throw err;
+  }
+  talkOk = true;
+  const rd = r.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { value, done } = await rd.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (line) { try { onEvent(JSON.parse(line)); } catch {} }
+    }
+  }
+  if (buf.trim()) { try { onEvent(JSON.parse(buf.trim())); } catch {} }
+  return true;
+}
+
 export const api = {
-  asr, tts, turn,
+  asr, tts, turn, talk,
   health: () => call('GET', '/api/health'),
   videos: () => call('GET', '/api/videos'),
   addVideo: (url) => call('POST', '/api/youtube/add', { url }),

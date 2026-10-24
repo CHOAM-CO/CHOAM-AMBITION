@@ -1,9 +1,9 @@
 // Call mode: Silero VAD (@ricky0123/vad-web) + backend ASR for the viewer's speech, and a gapless
 // TTS player for the agent's streamed sentences (with speechSynthesis as the per-sentence fallback).
-import { CONFIG } from './events.js?v=r15';
-import { api } from './api.js?v=r15';
-import { loadOrt, loadScript, ORT_BASE } from './ort.js?v=r15';
-import { Voice } from './voice.js?v=r15';
+import { CONFIG } from './events.js?v=r16';
+import { api } from './api.js?v=r16';
+import { loadOrt, loadScript, ORT_BASE } from './ort.js?v=r16';
+import { Voice } from './voice.js?v=r16';
 
 const VAD_VER = '0.0.29';
 const VAD_BASE = `https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@${VAD_VER}/dist/`;
@@ -20,13 +20,28 @@ export function encodeWav16(f32, sr = 16000) {
   return new Blob([buf], { type: 'audio/wav' });
 }
 
-/** short spoken answers to a yes/no bubble: 'yes' | 'no' | null (anything else is a normal turn) */
-export function classifyAnswer(text) {
-  const t = (text || '').replace(/[\s.,!?~…]+/g, '');
-  if (!t || t.length > 12) return null;
-  if (/(아니|아냐|됐어|괜찮)/.test(t)) return 'no';
-  if (/^(네|예|응|어|맞아|맞어|좋아|그래|찾아줘|찾아봐)/.test(t)) return 'yes';
+const norm = (t) => (t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+const YES_LONG = /^(넘겨|넘어가|스킵|좋아|좋죠|그래|그럼|맞아|맞어|맞다|오케이|ok|yes|yeah|yep|sure|찾아)/i;
+const YES_SHORT = /^(응+|으응|네+|넹|예+|어+)$/; // one-syllable acknowledgements only count as a whole word ("어떻게" is not a yes)
+const NO_TOK = /^(아니|아냐|아뇨|싫어|싫다|계속|됐어|됐다|괜찮|그냥|no+$|nope|nah|노$)/i;
+/** while a yes/no question is open, any utterance is the answer: keyword match, the earliest keyword wins. 'yes' | 'no' | null */
+export function matchAnswer(text) {
+  const toks = String(text || '').trim().split(/\s+/).map(norm).filter(Boolean);
+  for (const w of toks) {
+    if (NO_TOK.test(w)) return 'no';
+    if (YES_LONG.test(w) || YES_SHORT.test(w)) return 'yes';
+  }
   return null;
+}
+/** the agent's own voice picked up by the mic: share of the heard text's char bigrams found in what the agent just said */
+export function isEchoText(heard, lastAgent) {
+  const h = norm(heard), a = norm(lastAgent);
+  if (h.length < 4 || !a) return false;
+  if (a.includes(h)) return true;
+  const grams = new Set(); for (let i = 0; i < a.length - 1; i++) grams.add(a.slice(i, i + 2));
+  let hit = 0; const n = h.length - 1;
+  for (let i = 0; i < n; i++) if (grams.has(h.slice(i, i + 2))) hit++;
+  return hit / n >= CONFIG.call.echoOverlap;
 }
 
 /** mic -> VAD. onSpeechEnd gets a wav Blob. */
@@ -49,6 +64,12 @@ export class VadMic {
     });
     this.ready = true;
     if (!this.muted) await this.vad.start();
+  }
+  /** while the agent's TTS plays: stricter VAD (its own sound leaks into the mic) */
+  setSpeaking(on) {
+    if (!this.vad || !this.vad.setOptions) return;
+    const c = CONFIG.call, sp = c.speaking;
+    try { this.vad.setOptions(on ? { positiveSpeechThreshold: sp.positiveThreshold, minSpeechMs: sp.minSpeechMs } : { positiveSpeechThreshold: c.positiveThreshold, minSpeechMs: c.minSpeechMs }); } catch {}
   }
   async mute(on) { this.muted = on; if (!this.vad) return; if (on) await this.vad.pause(); else await this.vad.start(); }
 }
@@ -116,6 +137,21 @@ export class AgentVoice {
     this.q.push({ text, p: this._fetch(text, this.ctl.signal) });
     this._set(true); // 'speaking' from the moment audio is on its way (keeps the video ducked)
     this._run();
+  }
+
+  /** a sentence whose audio arrived inline (POST /api/voice/talk: base64 wav, or error -> fetch it from /api/tts). Kept in seq order. */
+  enqueueAudio(seq, sentence, b64) {
+    if (!this.ctl) this.ctl = new AbortController();
+    const signal = this.ctl.signal;
+    let p;
+    if (b64 && this.ctx) {
+      const bin = atob(b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      p = this.ctx.decodeAudioData(u8.buffer).catch(() => this._fetch(sentence, signal));
+    } else p = this._fetch(sentence, signal);
+    const it = { text: sentence, seq, p };
+    let i = this.q.length; while (i > 0 && this.q[i - 1].seq != null && this.q[i - 1].seq > seq) i--;
+    this.q.splice(i, 0, it);
+    this._set(true); this._run();
   }
 
   async _fetch(text, signal) {
