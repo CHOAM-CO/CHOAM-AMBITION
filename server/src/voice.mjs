@@ -17,7 +17,7 @@ OUTPUT FORMAT: the very first line is exactly ONE tag, nothing else on that line
 [SEARCH]  - addressed, and answering needs a live lookup (product model + price, where to buy, price comparison, web facts). Write nothing after the tag.
 [SAY]     - addressed, you can answer directly (chat, reactions, what's on screen). Put the spoken reply on the following lines.
 [SKIP]    - (only when the viewer said nothing) there is nothing worth saying.
-After [SAY]: 1-2 SHORT sentences, each ending with . ? or !, no markdown, no lists, no emoji, never read out URLs or long numbers, never identify real people by face. You may end with a brief friendly follow-up question. Be concrete about what is on screen when relevant.
+After [SAY]: 1-2 SHORT sentences, each ending with . ? or !, no markdown, no lists, no emoji, never read out URLs or long numbers, never identify real people by face. Never guess brands or model names: name a brand/model only if its logo or text is clearly legible in the frame; otherwise describe generically (e.g. "수납함", "모니터 암"). You may end with a brief friendly follow-up question. Be concrete about what is on screen when relevant.
 When the viewer said nothing (idle / follow-up): either [SKIP], or [SAY] one short natural comment or question about what is on screen right now (or a gentle follow-up to your own last line). Don't repeat what you already said in the recent conversation.`;
 
 const EMOJI = /[\p{Extended_Pictographic}️]/gu;
