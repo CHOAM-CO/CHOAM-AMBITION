@@ -1,4 +1,4 @@
-import { CONFIG } from './events.js?v=r4';
+import { CONFIG } from './events.js?v=r5';
 // Gaze sources: WebGazer (webcam) or mouse. Exposes latest raw point in client px.
 const WEBGAZER_SRC = 'https://cdn.jsdelivr.net/npm/webgazer@3.4.0/dist/webgazer.min.js';
 
@@ -94,7 +94,7 @@ export async function runCalibration(root, source, getGaze, clickMode = false) {
         await sleep(ac.waitMs);
         const t0 = performance.now();
         while (performance.now() - t0 < ac.collectMs) {
-          if (source.latest() && source.wg) { try { source.wg.recordScreenPosition(x, y, 'click'); } catch {} }
+          if (source.wg) { try { source.wg.recordScreenPosition(x, y, 'click'); } catch {} } // no prediction exists before the first sample, so do not gate on latest()
           await sleep(ac.tickMs);
         }
         d.remove();
