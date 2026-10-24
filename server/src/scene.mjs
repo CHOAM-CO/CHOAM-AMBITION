@@ -116,10 +116,16 @@ export function ago(iso, now = Date.now()) {
   if (m < 60) return `${m}분 ${r}초 전`;
   return `${Math.floor(m / 60)}시간 ${m % 60}분 전`;
 }
-const stamp = (iso, vt, now) => `[${kstHms(iso)} 실제시각 (${ago(iso, now)}) | 영상 ${vt == null ? '--:--' : mmss(vt)}]`;
+// natural spoken video position: 20초 / 3분 / 1분 35초
+export const vpos = (sec) => { const t = Math.max(0, Math.round(Number(sec) || 0)); const m = Math.floor(t / 60), r = t % 60; return m ? (r ? `${m}분 ${r}초` : `${m}분`) : `${r}초`; };
+const stamp = (iso, vt, now) => `[${kstHms(iso)} 실제시각 (${ago(iso, now)}) | 영상 ${vt == null ? '알 수 없음' : vpos(vt)}]`;
 
 export function nowLine(videoTime) {
-  return `현재 시각: ${kstFull()}\n현재 영상 위치: ${mmss(videoTime)}`;
+  const d = new Date();
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: false }).formatToParts(d).map((x) => [x.type, x.value]));
+  const h = Number(p.hour) % 24, mi = Number(p.minute), se = Number(p.second);
+  const ampm = h < 12 ? '오전' : '오후', h12 = h % 12 === 0 ? 12 : h % 12;
+  return `현재 시각: ${ampm} ${h12}시 ${String(mi).padStart(2, '0')}분 ${String(se).padStart(2, '0')}초 (${KST.format(d)} KST, 24시간제 ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')})\n현재 영상 위치: ${vpos(videoTime)}`;
 }
 
 // One chronological timeline (oldest -> newest, last `limit`): scene log + gaze captures + yes/no feedback.
