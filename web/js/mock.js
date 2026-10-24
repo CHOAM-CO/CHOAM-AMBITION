@@ -8,6 +8,12 @@ const THINGS = [
   { label: '캔버스 토트백', category: 'fashion', description: '어깨에 멘 베이지색 가방', query: '캔버스 토트백 베이지' },
 ];
 
+const mkLinks = (q) => [{ title: `${q} - 쇼핑 검색`, url: 'https://www.google.com/search?tbm=shop&q=' + encodeURIComponent(q) }];
+const ALTS = [
+  [{ label: '갈색 구두', say: '아 이거 아닌가요...? 그럼 옆에 갈색 구두요?', links: mkLinks('갈색 가죽 구두') },
+   { label: '검은 양말', say: '음, 그럼 혹시 검은 양말이요?', links: mkLinks('검은 양말') }],
+  [{ label: '나무 책상', say: '그럼 뒤에 있는 나무 책상이요?', links: mkLinks('원목 책상') }],
+];
 const store = { n: 0, caps: [] };
 
 export async function mockApi(method, path, body) {
@@ -28,6 +34,7 @@ export async function mockApi(method, path, body) {
     const i = store.n++;
     const t = THINGS[i % THINGS.length];
     const speak = i % 2 === 0;
+    const alts = ALTS[i % ALTS.length];
     const links = [
       { title: `${t.label} - 쇼핑 검색`, url: 'https://www.google.com/search?tbm=shop&q=' + encodeURIComponent(t.query) },
       { title: `${t.label} - 비슷한 이미지`, url: 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(t.query) },
@@ -39,11 +46,14 @@ export async function mockApi(method, path, body) {
       imageUrl: body.image,
       item: { label: t.label, category: t.category, description: t.description },
       speak,
-      say: speak ? `방금 ${t.label} 눈여겨 보신 것 같은데, 찾아볼까요?` : null,
+      say: speak ? `방금 ${t.label} 보신 거 맞죠? 찾아볼까요?` : null,
       query: t.query,
       links,
+      alternatives: alts,
     };
   }
+
+  if (path === '/api/feedback') return { ok: true };
 
   if (path === '/api/summary') {
     await sleep(900);

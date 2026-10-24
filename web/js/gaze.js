@@ -1,3 +1,4 @@
+import { CONFIG } from './events.js?v=r4';
 // Gaze sources: WebGazer (webcam) or mouse. Exposes latest raw point in client px.
 const WEBGAZER_SRC = 'https://cdn.jsdelivr.net/npm/webgazer@3.4.0/dist/webgazer.min.js';
 
@@ -43,6 +44,9 @@ export class WebGazerSource {
 
   latest() { return this.p && performance.now() - this.p.t < 600 ? this.p : null; }
 
+  /** facemesh landmarks (468) from WebGazer's tracker, or null */
+  positions() { try { return this.wg.getTracker().getPositions(); } catch { return null; } }
+
   clear() { if (this.wg && this.wg.clearData) this.wg.clearData(); }
 
   freeze() { // stop learning from mouse after calibration
@@ -51,27 +55,51 @@ export class WebGazerSource {
 }
 
 /** Runs the 9-point calibration + accuracy check. Resolves when the user accepts. */
-export async function runCalibration(root, source, getGaze) {
+export async function runCalibration(root, source, getGaze, clickMode = false) {
   const CLICKS = 3;
-  const pts = [[12, 14], [88, 14], [50, 50], [12, 86], [88, 86]]; // 4 corners inset + center
+  const clickPts = [[12, 14], [88, 14], [50, 50], [12, 86], [88, 86]]; // 4 corners inset + center
+  const autoPts = [];
+  for (const y of [14, 50, 86]) for (const x of [12, 50, 88]) autoPts.push([x, y]); // 3x3 inset grid
   for (;;) {
     source.clear && source.clear();
     root.hidden = false;
-    root.innerHTML = '<p class="calib-msg">화면의 점을 눈으로 보면서 각 점을 3번씩 클릭해 주세요</p><div class="calib-field"></div>';
-    const field = root.querySelector('.calib-field');
-    await new Promise((resolve) => {
-      let left = pts.length;
-      pts.forEach(([px, py]) => {
-        const b = document.createElement('button');
-        b.className = 'calib-pt'; b.style.left = px + '%'; b.style.top = py + '%'; b.textContent = CLICKS;
-        let n = CLICKS;
-        b.onclick = () => {
-          n--; b.textContent = n; b.style.opacity = String(0.35 + 0.65 * (n / CLICKS));
-          if (n <= 0) { b.remove(); if (--left === 0) resolve(); }
-        };
-        field.appendChild(b);
+    const field = (root.innerHTML = clickMode
+      ? '<p class="calib-msg">화면의 점을 눈으로 보면서 각 점을 3번씩 클릭해 주세요</p><div class="calib-field"></div>'
+      : '<p class="calib-msg">나타나는 점을 눈으로만 따라가 주세요. 클릭은 필요 없어요</p><div class="calib-field"></div>',
+      root.querySelector('.calib-field'));
+    if (clickMode) {
+      await new Promise((resolve) => {
+        let left = clickPts.length;
+        clickPts.forEach(([px, py]) => {
+          const b = document.createElement('button');
+          b.className = 'calib-pt'; b.style.left = px + '%'; b.style.top = py + '%'; b.textContent = CLICKS;
+          let n = CLICKS;
+          b.onclick = () => {
+            n--; b.textContent = n; b.style.opacity = String(0.35 + 0.65 * (n / CLICKS));
+            if (n <= 0) { b.remove(); if (--left === 0) resolve(); }
+          };
+          field.appendChild(b);
+        });
       });
-    });
+    } else {
+      // eyes-only: train WebGazer on every tick while the viewer looks at the point (no clicks, no mouse training)
+      source.wg && source.wg.removeMouseEventListeners && source.wg.removeMouseEventListeners();
+      const ac = CONFIG.autoCalib, sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      for (const [px, py] of autoPts) {
+        const d = document.createElement('div');
+        d.className = 'calib-pt auto'; d.style.left = px + '%'; d.style.top = py + '%';
+        field.appendChild(d);
+        d.style.setProperty('--dur', (ac.waitMs + ac.collectMs) + 'ms');
+        const x = innerWidth * px / 100, y = innerHeight * py / 100;
+        await sleep(ac.waitMs);
+        const t0 = performance.now();
+        while (performance.now() - t0 < ac.collectMs) {
+          if (source.latest() && source.wg) { try { source.wg.recordScreenPosition(x, y, 'click'); } catch {} }
+          await sleep(ac.tickMs);
+        }
+        d.remove();
+      }
+    }
     source.freeze && source.freeze();
 
     // accuracy check
@@ -107,7 +135,7 @@ export async function runCalibration(root, source, getGaze) {
       root.querySelector('#cal-go').onclick = () => res('go');
     });
     if (choice === 'go') break;
-    source.wg && source.wg.addMouseEventListeners && source.wg.addMouseEventListeners();
+    if (clickMode && source.wg && source.wg.addMouseEventListeners) source.wg.addMouseEventListeners();
   }
   root.hidden = true; root.innerHTML = '';
 }

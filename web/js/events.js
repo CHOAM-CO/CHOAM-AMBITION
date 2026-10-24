@@ -37,7 +37,23 @@ export const CONFIG = {
   maxCropPx: 512,               // downscale crops larger than this
 
   // agent bubble
-  bubbleTtlMs: 30000,
+  bubbleTtlMs: 45000,
+
+  // head gestures (from WebGazer facemesh landmarks), only while a bubble asks a question
+  gesture: {
+    noseIdx: 1, eyeLIdx: 33, eyeRIdx: 263, // facemesh: nose tip, outer eye corners
+    baselineMs: 2000,           // rolling-median baseline, frozen while the bubble is open
+    graceMs: 600,               // ignore motion this long after the bubble opens
+    windowMs: 1500,             // a gesture must complete within this window
+    minReversals: 2,            // direction reversals needed (down-up-down = 2)
+    pitchAmp: 0.05,             // nod: reversal hysteresis / min swing, in inter-ocular distances
+    yawAmp: 0.06,               // shake: same, for yaw
+    dominance: 1.2,             // winning axis swing (relative to its amp) must beat the other by this factor
+    cooldownMs: 1200,
+  },
+
+  // eyes-only calibration (default); ?calib=click uses click calibration
+  autoCalib: { waitMs: 400, collectMs: 1000, tickMs: 50 },
 };
 
 if (typeof window !== 'undefined') window.AMBITION_CONFIG = CONFIG; // tweak live from the console

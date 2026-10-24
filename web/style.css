@@ -75,3 +75,10 @@ body:not(.debug) #webgazerVideoContainer { display:none !important; }
 .toast { background:#2a1f1f; border:1px solid #6b3030; color:#ffd7d7; padding:8px 12px; border-radius:8px; font-size:13px; max-width:340px; }
 @media (max-width:800px) { .watch { flex-direction:column; height:auto; } .panel { width:auto; } }
 .calib-skip { position:absolute; bottom:40px; left:50%; transform:translateX(-50%); }
+#gesture-badge { position:fixed; top:64px; right:16px; z-index:130; padding:6px 14px; border-radius:99px; font-weight:700; opacity:0; transform:translateY(-6px); transition:.2s; pointer-events:none; }
+#gesture-badge.show { opacity:1; transform:none; }
+#gesture-badge.ok { background:#1f6f43; color:#eaffef; }
+#gesture-badge.no { background:#8a2b2b; color:#ffeaea; }
+.calib-pt.auto { pointer-events:none; background:var(--accent); border:2px solid #fff; width:26px; height:26px; margin:-13px 0 0 -13px; }
+.calib-pt.auto::after { content:""; position:absolute; inset:-30px; border-radius:50%; border:3px solid var(--accent); animation:shrink var(--dur,1.4s) linear forwards; }
+@keyframes shrink { from { transform:scale(1.8); opacity:.4; } to { transform:scale(.55); opacity:1; } }

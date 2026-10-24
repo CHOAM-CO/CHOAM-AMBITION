@@ -1,5 +1,5 @@
 // DOM helpers: toasts, capture panel, agent bubble, summary.
-import { CONFIG } from './events.js?v=r3';
+import { CONFIG } from './events.js?v=r4';
 
 const $ = (s) => document.querySelector(s);
 export const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -45,35 +45,48 @@ export function addCapture({ thumb, videoTime, kind }) {
   };
 }
 
-let bubbleEl = null, bubbleTimer = null;
+let bubbleEl = null, bubbleTimer = null, bubbleText = null;
 export const bubbleActive = () => !!bubbleEl;
 export function dismissBubble() {
   clearTimeout(bubbleTimer);
-  if (bubbleEl) { bubbleEl.remove(); bubbleEl = null; }
+  if (bubbleEl) { bubbleEl.remove(); bubbleEl = null; bubbleText = null; }
 }
-export function showBubble({ say, links, onReveal }) {
-  if (bubbleEl) return false; // one at a time
+/** opens the question bubble; returns false if one is already open (one at a time) */
+export function showBubble({ say, onYes, onNo }) {
+  if (bubbleEl) return false;
   const el = document.createElement('div');
   el.className = 'bubble';
-  const p = document.createElement('p'); p.textContent = say;
-  const row = document.createElement('div'); row.className = 'row';
+  bubbleText = document.createElement('p'); bubbleText.textContent = say;
+  const row = document.createElement('div'); row.className = 'row'; row.dataset.role = 'choices';
   const yes = document.createElement('button'); yes.className = 'btn primary'; yes.textContent = '찾아봐';
   const no = document.createElement('button'); no.className = 'btn'; no.textContent = '괜찮아';
-  no.onclick = dismissBubble;
-  yes.onclick = () => {
-    row.remove();
-    if (links && links.length) el.appendChild(linkList(links));
-    else { const e = document.createElement('p'); e.className = 'muted'; e.textContent = '아직 찾은 링크가 없어요.'; el.appendChild(e); }
-    const close = document.createElement('button'); close.className = 'btn'; close.textContent = '닫기'; close.onclick = dismissBubble;
-    el.appendChild(close);
-    onReveal && onReveal();
-  };
+  yes.onclick = onYes; no.onclick = onNo;
   row.append(yes, no);
-  el.append(p, row);
+  el.append(bubbleText, row);
   $('#bubble-slot').appendChild(el);
   bubbleEl = el;
   bubbleTimer = setTimeout(dismissBubble, CONFIG.bubbleTtlMs);
   return true;
+}
+export function bubbleSay(text) { if (bubbleText) bubbleText.textContent = text; }
+/** remove the yes/no buttons (answered) */
+export function bubbleLock() { const r = bubbleEl && bubbleEl.querySelector('[data-role=choices]'); if (r) r.remove(); }
+export function bubbleLinks(links) {
+  if (!bubbleEl) return;
+  bubbleLock();
+  bubbleEl.querySelectorAll('.links, .muted, [data-role=close]').forEach((n) => n.remove());
+  if (links && links.length) bubbleEl.appendChild(linkList(links));
+  else { const e = document.createElement('p'); e.className = 'muted'; e.textContent = '아직 찾은 링크가 없어요.'; bubbleEl.appendChild(e); }
+  const close = document.createElement('button'); close.className = 'btn'; close.textContent = '닫기'; close.dataset.role = 'close'; close.onclick = dismissBubble;
+  bubbleEl.appendChild(close);
+}
+
+let badgeTimer = null;
+export function flashBadge(text, ok) {
+  const el = $('#gesture-badge');
+  el.textContent = text; el.className = 'show ' + (ok ? 'ok' : 'no');
+  clearTimeout(badgeTimer);
+  badgeTimer = setTimeout(() => { el.className = ''; }, 1400);
 }
 
 export function renderSummary(data) {

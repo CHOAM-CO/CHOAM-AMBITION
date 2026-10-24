@@ -1,5 +1,5 @@
 // Thin API client. ?mock=1 swaps every /api call for local fake responses.
-import { mockApi } from './mock.js?v=r3';
+import { mockApi } from './mock.js?v=r4';
 
 export const PARAMS = new URLSearchParams(location.search);
 export const MOCK = PARAMS.get('mock') === '1';
@@ -28,4 +28,5 @@ export const api = {
   session: (b) => call('POST', '/api/session', b),
   capture: (b) => call('POST', '/api/capture', b),
   summary: (b) => call('POST', '/api/summary', b),
+  feedback: (b) => call('POST', '/api/feedback', b).catch(() => {}), // fire and forget, endpoint may 404
 };

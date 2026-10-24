@@ -1,5 +1,5 @@
 // Frame grab + square crop around the gaze point.
-import { CONFIG } from './events.js?v=r3';
+import { CONFIG } from './events.js?v=r4';
 
 let display = null; // {stream, video} for YouTube
 

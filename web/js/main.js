@@ -1,9 +1,10 @@
-import { api, MOCK, PARAMS } from './api.js?v=r3';
-import { CONFIG, GazeEventDetector } from './events.js?v=r3';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r3';
-import { createMp4Player, createYouTubePlayer, parseYouTube } from './player.js?v=r3';
-import { grab, startDisplayCapture, hasDisplayCapture } from './capture.js?v=r3';
-import { toast, addCapture, showBubble, bubbleActive, dismissBubble, renderSummary } from './ui.js?v=r3';
+import { api, MOCK, PARAMS } from './api.js?v=r4';
+import { CONFIG, GazeEventDetector } from './events.js?v=r4';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r4';
+import { createMp4Player, createYouTubePlayer, parseYouTube } from './player.js?v=r4';
+import { grab, startDisplayCapture, hasDisplayCapture } from './capture.js?v=r4';
+import { toast, addCapture, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary } from './ui.js?v=r4';
+import { HeadGestures } from './gesture.js?v=r4';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -65,7 +66,7 @@ async function start(video) {
       setup(null);
       if (S.source.mode === 'webcam') {
         startTick(); // gaze dot visible during calibration
-        await runCalibration($('#calib'), S.source, () => sm);
+        await runCalibration($('#calib'), S.source, () => sm, PARAMS.get('calib') === 'click');
       }
     }
   } finally { setup(null); }
@@ -113,6 +114,9 @@ function startTick() {
 }
 
 function tick() {
+  const nowG = performance.now();
+  gest.setListening(!!dlg && dlg.asking && bubbleActive(), nowG);
+  gest.update(nowG);
   const raw = S.source && S.source.latest();
   const now = performance.now();
   if (!raw) { sm = null; win = []; dot.style.opacity = 0; detector.reset(); return; }
@@ -153,14 +157,66 @@ async function onGazeEvent(ev) {
       capturedAt: new Date().toISOString(), kind: ev.kind, dwellMs: ev.dwellMs, gaze: shot.gaze, image: shot.image,
     });
     card.setResult(res);
-    if (res.speak && res.say && !S.finished) {
-      showBubble({ say: res.say, links: res.links, onReveal: () => card.showLinks(res.links) });
-    }
+    if (res.speak && res.say && !S.finished) openDialog(card, res);
   } catch (e) {
     card.setError();
     toast('서버 오류: ' + e.message);
   }
 }
+
+// ---------- bubble dialogue (buttons, head gestures, or Y/N keys) ----------
+let dlg = null; // {card, res, alt: -1 = original, asking}
+const gest = new HeadGestures(() => (S.source && S.source.positions ? S.source.positions() : null), (g) => onGesture(g));
+
+function curItem() {
+  const { res, alt } = dlg;
+  if (alt < 0) return { label: res.item && res.item.label, links: res.links };
+  const a = res.alternatives[alt];
+  return { label: a.label || a.query || '', links: a.links };
+}
+function feedback(answer) {
+  const it = curItem();
+  api.feedback({ sessionId: S.session, captureId: dlg.res.captureId, label: it.label || '', answer });
+}
+function openDialog(card, res) {
+  const d = { card, res, alt: -1, asking: true };
+  const ok = showBubble({ say: res.say, onYes: () => answerYes(d), onNo: () => answerNo(d) });
+  if (ok) dlg = d;
+}
+function answerYes(d) {
+  if (d !== dlg || !d.asking) return;
+  d.asking = false;
+  feedback('yes');
+  const it = curItem();
+  bubbleSay('찾아볼게요');
+  bubbleLinks(it.links);
+  d.card.showLinks(it.links);
+}
+function answerNo(d) {
+  if (d !== dlg || !d.asking) return;
+  feedback('no');
+  const alts = d.res.alternatives || [];
+  if (d.alt + 1 < alts.length) {
+    d.alt++;
+    bubbleSay(alts[d.alt].say); // links appear only after a yes
+  } else {
+    d.asking = false;
+    bubbleLock();
+    bubbleSay('알겠어요, 방해 안 할게요');
+    setTimeout(() => { if (dlg === d) dismissBubble(); }, 2000);
+  }
+}
+function onGesture(g) {
+  if (!dlg || !dlg.asking || !bubbleActive()) return;
+  flashBadge(g === 'nod' ? '끄덕 ✓' : '도리도리 ✗', g === 'nod');
+  g === 'nod' ? answerYes(dlg) : answerNo(dlg);
+}
+// keyboard stand-ins: Y = nod, N = shake (works in every mode; handy without a camera)
+addEventListener('keydown', (e) => {
+  if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName) || e.metaKey || e.ctrlKey) return;
+  if (e.key === 'y' || e.key === 'Y') onGesture('nod');
+  else if (e.key === 'n' || e.key === 'N') onGesture('shake');
+});
 
 // ---------- summary ----------
 async function finish() {
