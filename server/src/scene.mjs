@@ -139,7 +139,7 @@ export function memoryBlock(session, captures, limit = 30) {
     if (sc.objects?.length) bits.push(`물건: ${sc.objects.slice(0, 8).join(', ')}`);
     if (sc.people?.length) bits.push(`인물: ${sc.people.map((p) => `${p.desc}${p.action ? ' ' + p.action : ''}`).join(', ')}`);
     if (sc.features?.length) bits.push(`특징: ${sc.features.slice(0, 5).join(', ')}`);
-    rows.push({ t: sc.t, line: `${stamp(sc.t, sc.videoTime, now)} 장면${sc.expression ? ` (시청자 ${sc.expression})` : ''} ${bits.join(' — ')}` });
+    rows.push({ t: sc.t, line: `${stamp(sc.t, sc.videoTime, now)} 장면${sc.expression ? ` (이때 시청자(사용자)의 표정이 ${sc.expression}으로 감지됨)` : ''} ${bits.join(' — ')}` });
   }
   const capById = new Map();
   for (const c of captures) {
