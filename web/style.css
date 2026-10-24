@@ -250,3 +250,4 @@ body:not(.debug) #webgazerVideoContainer { display:none !important; }
 #gesture-badge.ok, #gesture-badge.no { background:rgba(0,0,0,.6); color:#fff; }
 .chat-item { display:grid; grid-template-columns:1fr auto; gap:0 12px; background:#1f2023; border-radius:8px; padding:6px 12px; }
 @media (max-width:1000px) { .watch { grid-template-columns:1fr; height:auto; overflow:visible; } .side, .chatcol { display:none; } .top { grid-template-columns:auto 1fr; } .top-right { display:none; } }
+.player iframe { pointer-events:none; } /* gaze-only app (controls off): lets ?gaze=mouse mousemove reach the page over a YouTube embed */
