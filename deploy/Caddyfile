@@ -1,0 +1,11 @@
+# Static server for the web/ dir. Run: caddy run --config <this file> --adapter caddyfile
+http://:8787 {
+	root * D:/ambition/repo/web
+	file_server
+}
+
+# Enable later when public 80/443 exists:
+# ambition.choam.studio {
+# 	root * D:/ambition/repo/web
+# 	file_server
+# }

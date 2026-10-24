@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHOAM AMBITION</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">AMBITION</div>
+  <div class="chips">
+    <span class="chip" id="chip-mode" hidden></span>
+    <span class="chip" id="chip-src"></span>
+    <span class="chip">캡처 <b id="cap-count">0</b></span>
+  </div>
+  <button class="btn" id="btn-done" hidden>다 봤어</button>
+</header>
+
+<main>
+  <section id="screen-pick" class="pick">
+    <h1>무엇을 볼까요?</h1>
+    <p class="muted">시선이 오래 머문 곳을 에이전트가 알아채고, 필요하면 찾아드려요.</p>
+    <div id="video-list" class="video-list"><p class="muted">불러오는 중…</p></div>
+    <form id="yt-form" class="yt-form">
+      <input id="yt-url" type="text" placeholder="YouTube 주소 (watch?v=, youtu.be, shorts)" autocomplete="off">
+      <button class="btn primary" type="submit">YouTube로 보기</button>
+    </form>
+  </section>
+
+  <section id="screen-watch" class="watch" hidden>
+    <div class="stage">
+      <div id="player" class="player"></div>
+      <div id="bubble-slot"></div>
+    </div>
+    <aside class="panel">
+      <h2>눈여겨본 장면</h2>
+      <p id="captures-empty" class="muted">영상을 보다가 한 곳을 오래 보면 여기에 쌓여요.</p>
+      <ol id="captures" class="captures"></ol>
+    </aside>
+  </section>
+</main>
+
+<div id="setup" class="overlay" hidden><div class="setup-box"><div id="setup-msg"></div></div></div>
+<div id="calib" class="overlay calib" hidden></div>
+<div id="summary" class="overlay summary" hidden>
+  <div class="summary-box">
+    <h2>오늘 눈여겨본 것들</h2>
+    <div id="summary-body"></div>
+    <div class="row"><button class="btn primary" id="btn-restart">처음으로</button></div>
+  </div>
+</div>
+
+<div id="gaze-dot"></div>
+<div id="hud" class="hud" hidden></div>
+<div id="toasts"></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
