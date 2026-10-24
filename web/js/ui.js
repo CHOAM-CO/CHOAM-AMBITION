@@ -41,7 +41,7 @@ function msgShell(cls, who) {
 }
 /** who: 'agent' | 'user' | 'sys' (gesture / event line). Agent and viewer lines also fly over the video as danmaku. returns {setText, setItems, remove} */
 export function chatAdd({ who, text, items, links, dm = true }) {
-  const { m, mb } = who === 'agent' ? msgShell('agent', '에이전트') : who === 'sys' ? msgShell('sys', '') : msgShell('user', '나');
+  const { m, mb } = who === 'agent' ? msgShell('agent', 'NUNCHI') : who === 'sys' ? msgShell('sys', '') : msgShell('user', '나');
   const t = document.createElement('span'); t.className = 'txt'; t.textContent = text || ''; mb.appendChild(t);
   if (dm && text && text !== '…') danmaku(text, who);
   const api = {

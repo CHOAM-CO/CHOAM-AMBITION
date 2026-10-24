@@ -1,4 +1,4 @@
-/* AMBITION web r16: Chzzk (chzzk.naver.com) watch page, copied from a live 1440x900 capture:
+/* NUNCHI web r16: Chzzk (chzzk.naver.com) watch page, copied from a live 1440x900 capture:
    header 60px #141517, left menu 240px, player 846x476 flush to the sidebar, chat column 353px, chat rows 14/20 with 500-weight nick colours,
    title 22/28 700, channel row with a 70px profile + LIVE tag, pill buttons 34px/17px radius. Fonts: Pretendard Variable -> Apple SD Gothic Neo. */
 :root { --bg:#141517; --bg2:#0e0f10; --panel:#1b1c1e; --panel-hover:#25272b; --line:#2e3033; --text:#dfe2ea; --muted:#9da5b6; --sub:#c9cedc; --accent:#00e693; --live:#e91916; --purple:#4e41db; }
@@ -255,3 +255,4 @@ body:not(.debug) #webgazerVideoContainer { display:none !important; }
 /* expression chip next to the agent state (plain text, no glow) */
 .expr-chip { font-size:12px; font-weight:700; color:var(--text); border:1px solid rgba(255,255,255,.2); border-radius:10px; padding:0 8px; line-height:18px; }
 .expr-chip:empty { display:none; }
+.landing .tagline { margin:6px 0 20px; font-size:18px; font-weight:600; color:var(--sub); }

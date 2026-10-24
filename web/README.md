@@ -1,4 +1,4 @@
-# AMBITION web
+# NUNCHI web
 
 Static frontend (no build). Open `index.html` via any static server; `?mock=1` fakes the API, `?gaze=mouse` uses the mouse,
 `?debug=1` shows the gaze HUD, `?tracker=webgazer` uses the old WebGazer tracker (default is EyeTheia).

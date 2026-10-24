@@ -3,14 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CHOAM AMBITION</title>
+<title>NUNCHI — 눈치 있는 AI</title>
+<meta name="description" content="NUNCHI: 눈치 있는 AI. 시선과 표정, 목소리로 같이 영상을 보는 에이전트">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="stylesheet" href="style.css?v=r19">
 </head>
 <body>
 <header class="top">
-  <div class="top-left"><span class="burger"></span><span class="logo">AMBITION</span></div>
+  <div class="top-left"><span class="burger"></span><span class="logo">NUNCHI</span></div>
   <div class="top-center">
     <form id="add-form" class="addbar" hidden autocomplete="off"><input id="add-input" type="text" placeholder="영상 추가 · YouTube 주소 붙여넣고 Enter" spellcheck="false"><button type="submit" id="add-btn" aria-label="영상 추가">+</button></form>
   </div>
@@ -24,7 +25,8 @@
 
 <main>
   <section id="screen-landing" class="landing">
-    <h1>눈으로 보는 AMBITION</h1>
+    <h1>NUNCHI</h1>
+    <p class="tagline">눈치 있는 AI</p>
     <button class="start-btn" id="btn-start">시작</button>
     <p class="muted">이 버튼 한 번만 눌러 주세요. 그 뒤로는 눈과 고개만으로 진행돼요.</p>
   </section>
@@ -72,10 +74,10 @@
       </div>
       <div class="info">
         <h1 id="watch-title" class="watch-title"></h1>
-        <div class="info-row"><span class="cat">AMBITION</span><span id="watch-sub" class="viewers"></span></div>
+        <div class="info-row"><span class="cat">NUNCHI</span><span id="watch-sub" class="viewers"></span></div>
         <div class="channel">
           <div id="agent-av" class="ch-av idle"><span>AI</span><em class="ch-live">LIVE</em></div>
-          <div class="ch-meta"><strong>AMBITION 에이전트</strong><span class="ch-state"><span id="agent-state">대기 중</span><span id="agent-expr" class="expr-chip"></span><span id="agent-eq"><b></b><b></b><b></b><b></b></span></span></div>
+          <div class="ch-meta"><strong>NUNCHI</strong><span class="ch-state"><span id="agent-state">대기 중</span><span id="agent-expr" class="expr-chip"></span><span id="agent-eq"><b></b><b></b><b></b><b></b></span></span></div>
           <div class="watch-actions">
             <button class="pill mint" id="btn-done">다 봤어</button>
             <button class="pill light" id="btn-home">홈으로</button>

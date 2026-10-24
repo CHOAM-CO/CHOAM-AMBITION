@@ -136,7 +136,7 @@ function renderHome() {
     const av = document.createElement('span'); av.className = 'avatar'; av.textContent = (v.title || 'A').trim().charAt(0).toUpperCase();
     const tx = document.createElement('div'); tx.className = 'vtxt';
     const t = document.createElement('div'); t.className = 'vtitle'; t.textContent = v.title;
-    const ch = document.createElement('div'); ch.className = 'vch'; ch.textContent = v.source === 'youtube' ? 'YouTube' : 'AMBITION 샘플';
+    const ch = document.createElement('div'); ch.className = 'vch'; ch.textContent = v.source === 'youtube' ? 'YouTube' : 'NUNCHI 샘플';
     const mt = document.createElement('div'); mt.className = 'vmeta'; mt.textContent = ready ? '재생 준비됨' : failed ? '5분 뒤 다시 시도해요' : '준비 중이에요…';
     tx.append(t, ch, mt); info.append(av, tx);
     card.append(th, info);
