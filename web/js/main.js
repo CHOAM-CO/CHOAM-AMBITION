@@ -8,6 +8,7 @@ import { toast, addCapture, showBubble, bubbleActive, dismissBubble, renderSumma
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
 const DEBUG = PARAMS.get('debug') === '1';
+if (DEBUG) document.body.classList.add('debug');
 
 const S = { video: null, player: null, session: null, source: null, tick: null, finished: false, caps: 0 };
 let sm = null; // smoothed gaze {x,y}
