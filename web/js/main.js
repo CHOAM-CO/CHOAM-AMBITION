@@ -1,14 +1,14 @@
-import { api, MOCK, PARAMS } from './api.js?v=r14';
-import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r14';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r14';
-import { EyeTheiaSource } from './eyetheia.js?v=r14';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r14';
-import { grab } from './capture.js?v=r14';
-import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime, openChatBubble, updateChatBubble, chatAdd, chatClear } from './ui.js?v=r14';
-import { HeadGestures } from './gesture.js?v=r14';
-import { Dwell } from './dwell.js?v=r14';
-import { Voice } from './voice.js?v=r14';
-import { VadMic, AgentVoice, classifyAnswer } from './call.js?v=r14';
+import { api, MOCK, PARAMS } from './api.js?v=r15';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r15';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r15';
+import { EyeTheiaSource } from './eyetheia.js?v=r15';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r15';
+import { grab } from './capture.js?v=r15';
+import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime, openChatBubble, updateChatBubble, chatAdd, chatClear, alertPop, handShow } from './ui.js?v=r15';
+import { HeadGestures } from './gesture.js?v=r15';
+import { Dwell } from './dwell.js?v=r15';
+import { Voice } from './voice.js?v=r15';
+import { VadMic, AgentVoice, classifyAnswer } from './call.js?v=r15';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -53,6 +53,7 @@ $('#btn-start').onclick = async () => {
       }
       setup(null);
       S.source.onHand = handAction; // EyeTheia only: hand gestures from the same camera
+      S.source.onHandFeedback = (f) => { if (f) handShow(f.name, f.progress, f.mapped); }; // live indicator before anything fires
       startTick(); // gaze dot visible during calibration
       if (S.source.mode === 'webcam') await runCalibration($('#calib'), S.source, () => sm, PARAMS.get('calib') === 'click');
     }
@@ -164,7 +165,7 @@ async function playVideo(v) {
   teardown();
   clearInterval(S.homeTimer);
   const token = S.token;
-  S.video = v; S.session = null;
+  S.video = v; S.session = null; S.labels = [];
   S.videoUrl = v.source === 'youtube' ? `https://www.youtube.com/watch?v=${v.youtubeId}` : v.url;
   clearCaptures(); chatClear();
   $('#watch-title').textContent = v.title;
@@ -212,6 +213,7 @@ function goNext() { const n = nextVideo(); if (n) playVideo(n); else goHome(); }
 const detector = new GazeEventDetector(onGazeEvent);
 const dot = $('#gaze-dot');
 const actionsEl = $('.watch-actions');
+const camEl = $('#cam');
 
 function startTick() {
   if (S.tick) return;
@@ -246,7 +248,10 @@ function tick() {
     inside = sm.x >= r.left && sm.x <= r.left + r.width && sm.y >= r.top && sm.y <= r.top + r.height;
     const ar = actionsEl.getBoundingClientRect(); // looking at the dwell buttons is not looking at the video
     if (sm.x >= ar.left - 24 && sm.x <= ar.right + 24 && sm.y >= ar.top - 24 && sm.y <= ar.bottom + 24) inside = false;
+    const cr = camEl.getBoundingClientRect(); // the agent cam overlays the video corner
+    if (sm.x >= cr.left - 12 && sm.x <= cr.right + 12 && sm.y >= cr.top - 12 && sm.y <= cr.bottom + 12) inside = false;
   }
+  S.inside = inside;
   dot.classList.toggle('active', inside);
   if (inside) detector.push(now, sm.x, sm.y); else detector.reset();
   dot.style.setProperty('--p', (inside ? detector.fixProgress : 0) * 360 + 'deg');
@@ -263,6 +268,7 @@ async function onGazeEvent(ev) { // ev.force: pointed at it (hand), always ask
   try { shot = await grab(p, ev.x, ev.y); }
   catch (e) { toast('캡처 실패: ' + e.message); return; }
   const card = addCapture({ thumb: shot.image || null, videoTime, kind: ev.kind });
+  ack('cap'); // instant local reaction, the server answer follows
   try {
     if (!S.session) {
       const r = await api.session({ videoUrl: S.videoUrl, videoTitle: v.title, source: v.source, youtubeId: v.youtubeId });
@@ -277,6 +283,7 @@ async function onGazeEvent(ev) { // ev.force: pointed at it (hand), always ask
     const res = await api.capture(body);
     if (token !== S.token) return;
     card.setResult(res);
+    if (res.item && res.item.label) { S.labels.push(res.item.label); if (S.labels.length > 8) S.labels.shift(); }
     res.__thumb = shot.image || res.imageUrl;
     if (ev.force) { // pointing: force the question bubble
       dismissBubble(); dlg = null;
@@ -317,6 +324,12 @@ function openDialog(card, res) {
 function answerYes(d, said) {
   if (d !== dlg || !d.asking) return;
   d.asking = false;
+  if (d.custom) { // thumbs-down "넘길까요?"
+    chatAdd({ who: 'user', text: said || '👍 응, 넘겨줘' });
+    bubbleLock(); bubbleSay('좋아요, 넘길게요'); chatAdd({ who: 'agent', text: '좋아요, 넘길게요' }); speakLine('좋아요, 넘길게요');
+    setTimeout(() => { if (S.state === 'watch' && S.token === d.token) goNext(); }, 1200);
+    return;
+  }
   feedback('yes');
   chatAdd({ who: 'user', text: said || '끄덕 ✓ 응!' });
   const it = curItem();
@@ -331,6 +344,13 @@ function answerYes(d, said) {
 }
 function answerNo(d, said) {
   if (d !== dlg || !d.asking) return;
+  if (d.custom) {
+    d.asking = false;
+    chatAdd({ who: 'user', text: said || '👎 아니, 계속 볼래' });
+    bubbleLock(); bubbleSay('그대로 볼게요'); chatAdd({ who: 'agent', text: '그대로 볼게요' }); speakLine('그대로 볼게요');
+    setTimeout(() => { if (dlg === d) dismissBubble(); }, 1500);
+    return;
+  }
   feedback('no');
   chatAdd({ who: 'user', text: said || '도리도리 ✗ 아니' });
   const alts = d.res.alternatives || [];
@@ -357,14 +377,32 @@ function pointNow() { // capture right now at the current gaze point
   detector.lastCap = { t: performance.now(), x: sm.x, y: sm.y }; // keep the gaze detector from double-capturing
   onGazeEvent({ kind: 'fixation', x: sm.x, y: sm.y, dwellMs: 0, force: true });
 }
+const THUMB_UP_LINES = ['오 이거 좋아요? 저도 좋네요', '좋죠! 마음에 들어요?', '오 이 장면 좋아요?'];
+function askSkip() { // thumbs-down outside a question: offer to skip
+  if (bubbleActive()) dismissBubble();
+  const d = { custom: true, asking: true, token: S.token };
+  const say = '별로예요? 다른 영상으로 넘길까요?';
+  const ok = showBubble({ say, yesLabel: '넘겨줘', noLabel: '계속 볼래', badge: '제안', onYes: () => answerYes(d), onNo: () => answerNo(d) });
+  if (ok) { dlg = d; chatAdd({ who: 'agent', text: say }); speakLine(say); activity(); }
+}
+function reactThumb(up) { // thumbs outside a question: react to the current moment
+  chatAdd({ who: 'sys', text: up ? '👍 엄지 척' : '👎 엄지 아래' });
+  activity();
+  if (up) {
+    const line = THUMB_UP_LINES[(Math.random() * THUMB_UP_LINES.length) | 0];
+    chatAdd({ who: 'agent', text: line }); alertPop({ text: line, emoji: '💚', badge: '공감' }); speakLine(line);
+  } else askSkip();
+}
+const asking = () => dlg && dlg.asking && bubbleActive();
 function handAction(name) {
   const watching = S.state === 'watch' && S.player;
+  if (watching || S.state === 'summary') handShow(name, 1, true, 1200);
   switch (name) {
-    case 'Thumb_Up': if (dlg && dlg.asking && bubbleActive()) { flashBadge('👍', true); answerYes(dlg); } break;
-    case 'Thumb_Down': if (dlg && dlg.asking && bubbleActive()) { flashBadge('👎', false); answerNo(dlg); } break;
-    case 'Open_Palm': if (watching) { flashBadge('✋', true); S.player.isPlaying() ? S.player.pause() : S.player.play(); } break;
-    case 'Pointing_Up': if (watching) { flashBadge('☝️', true); pointNow(); } break;
-    case 'Victory': if (watching || S.state === 'summary') { flashBadge('✌️', true); goNext(); } break;
+    case 'Thumb_Up': if (asking()) answerYes(dlg); else if (watching && !S.finished) reactThumb(true); break;
+    case 'Thumb_Down': if (asking()) answerNo(dlg); else if (watching && !S.finished) reactThumb(false); break;
+    case 'Open_Palm': if (watching) { chatAdd({ who: 'sys', text: S.player.isPlaying() ? '✋ 멈춤' : '✋ 재생' }); S.player.isPlaying() ? S.player.pause() : S.player.play(); } break;
+    case 'Pointing_Up': if (watching) { chatAdd({ who: 'sys', text: '☝️ 이거!' }); pointNow(); } break;
+    case 'Victory': if (watching || S.state === 'summary') { chatAdd({ who: 'sys', text: '✌️ 다음 영상' }); goNext(); } break;
   }
 }
 
@@ -377,6 +415,8 @@ addEventListener('keydown', (e) => {
   else if (e.key === 'p' || e.key === 'P') handAction('Open_Palm');
   else if (e.key === 'i' || e.key === 'I') handAction('Pointing_Up');
   else if (e.key === 'v' || e.key === 'V') handAction('Victory');
+  else if (e.key === 'u' || e.key === 'U') handAction('Thumb_Up');
+  else if (e.key === 'd' || e.key === 'D') handAction('Thumb_Down');
 });
 
 // ---------- call mode: VAD + ASR in, streamed turn + TTS out ----------
@@ -385,6 +425,42 @@ const STT = PARAMS.get('stt') || 'vad'; // vad (default) | webspeech | off
 let capTimer = null, duckTimer = null, duckSaved = null, turnCtl = null, turnActive = false, chatSeq = 0, hearing = false, muted = false;
 let lastActivity = performance.now(), vadReady = false;
 const activity = () => { lastActivity = performance.now(); };
+
+// ---------- instant acknowledgment + ASR hotword context + agent orb ----------
+let micLvl = 0, lastAck = 0;
+const ACKS = { cap: ['오', '음?'], speech: ['음…', '잠깐만요'] };
+function ack(kind) { // local only, never waits for the server
+  const now = performance.now();
+  if (now - lastAck < 2500 || agentVoice.speaking || hearing && kind === 'cap' || kind === 'cap' && bubbleActive()) return;
+  lastAck = now;
+  const pool = ACKS[kind], t = pool[(Math.random() * pool.length) | 0];
+  alertPop({ text: t, emoji: kind === 'cap' ? '👀' : '🎧', badge: '반응', ms: 1800 });
+  agentVoice.quick(t);
+}
+function asrContext() { // hotword bias for the ASR system prompt (server clips to 500 chars)
+  const v = S.video || {};
+  return [v.title, v.channel, ...(S.labels || []).slice(-5), '뒷광고', '최저가', '다나와', '모니터', '가방'].filter(Boolean).join(', ').slice(0, 500);
+}
+const orb = $('#orb'), orbBars = [...orb.querySelectorAll('.o-bars b')];
+function orbFrame(t) {
+  requestAnimationFrame(orbFrame);
+  if (S.state !== 'watch' && S.state !== 'summary') return;
+  let st = 'idle', lvl = 0;
+  micLvl *= 0.85;
+  if (agentVoice.speaking) { st = 'speaking'; lvl = agentVoice.level(); }
+  else if (turnActive) st = 'thinking';
+  else if (hearing) { st = 'listening'; lvl = micLvl; }
+  else if (S.inside) st = 'looking';
+  if (orb.className !== st) orb.className = st;
+  orb.style.setProperty('--lvl', lvl.toFixed(2));
+  if (sm) { // the core glances toward the gaze point
+    const r = orb.getBoundingClientRect();
+    orb.style.setProperty('--gx', Math.max(-1, Math.min(1, (sm.x - (r.left + r.width / 2)) / 500)).toFixed(2));
+    orb.style.setProperty('--gy', Math.max(-1, Math.min(1, (sm.y - (r.top + r.height / 2)) / 400)).toFixed(2));
+  }
+  if (st === 'speaking') orbBars.forEach((b, i) => { b.style.height = (8 + lvl * 46 * (0.45 + 0.55 * Math.abs(Math.sin(t / 110 + i * 1.4)))).toFixed(0) + 'px'; });
+}
+requestAnimationFrame(orbFrame);
 
 // header chip: 통화 · 듣는 중 / 생각 중 / 말하는 중
 const CALL_LABEL = { loading: '준비 중', listening: '듣는 중', thinking: '생각 중', speaking: '말하는 중', muted: '음소거', error: '마이크 오류', off: '꺼짐', unsupported: '음성 미지원' };
@@ -432,11 +508,16 @@ const vadMic = STT === 'vad' ? new VadMic({
     if (agentVoice.speaking || turnActive) { agentVoice.stop(); if (turnCtl) turnCtl.abort(); }
   },
   onMisfire: () => { hearing = false; scheduleUnduck(1000); capText.classList.remove('interim'); refreshCall(); },
+  onFrame: (p, frame) => { // mic level for the orb
+    let s = 0; for (let i = 0; i < frame.length; i++) s += frame[i] * frame[i];
+    micLvl = Math.max(micLvl, Math.min(1, Math.sqrt(s / frame.length) * 8));
+  },
   onSpeechEnd: async (wav) => {
     hearing = false; activity();
     caption('인식 중…', 8000);
+    if (!asking()) ack('speech'); // instant local "음…" while ASR runs
     try {
-      const r = await api.asr(wav);
+      const r = await api.asr(wav, asrContext());
       const t = (r.text || '').trim();
       if (t) handleUserText(t, 'voice'); else { scheduleUnduck(500); refreshCall(); }
     } catch (e) { toast('음성 인식 오류: ' + e.message); scheduleUnduck(500); refreshCall(); }
@@ -447,6 +528,7 @@ if (vadMic) window.__call = vadMic.h; // debug/test hook: __call.onSpeechStart()
 
 async function callStart() { // inside the start click
   agentVoice.unlock();
+  agentVoice.prefetch(['오', '음?', '음…', '잠깐만요']); // canned reactions, decoded now so they play instantly later
   setCall(STT === 'off' ? 'off' : 'loading');
   if (voice) voice.start();
   if (vadMic) vadMic.start().then(() => { vadReady = true; refreshCall(); }).catch((e) => { console.warn('VAD failed', e); setCall('error'); toast('마이크를 켜지 못했어요: ' + (e.message || e.name)); });

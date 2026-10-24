@@ -1,9 +1,9 @@
 // Call mode: Silero VAD (@ricky0123/vad-web) + backend ASR for the viewer's speech, and a gapless
 // TTS player for the agent's streamed sentences (with speechSynthesis as the per-sentence fallback).
-import { CONFIG } from './events.js?v=r14';
-import { api } from './api.js?v=r14';
-import { loadOrt, loadScript, ORT_BASE } from './ort.js?v=r14';
-import { Voice } from './voice.js?v=r14';
+import { CONFIG } from './events.js?v=r15';
+import { api } from './api.js?v=r15';
+import { loadOrt, loadScript, ORT_BASE } from './ort.js?v=r15';
+import { Voice } from './voice.js?v=r15';
 
 const VAD_VER = '0.0.29';
 const VAD_BASE = `https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@${VAD_VER}/dist/`;
@@ -44,6 +44,7 @@ export class VadMic {
       onSpeechStart: () => this.h.onSpeechStart(),
       onSpeechRealStart: () => this.h.onSpeechRealStart(),
       onVADMisfire: () => this.h.onMisfire(),
+      onFrameProcessed: (p, frame) => { if (this.h.onFrame) this.h.onFrame(p, frame); },
       onSpeechEnd: (audio) => this.h.onSpeechEnd(encodeWav16(audio)),
     });
     this.ready = true;
@@ -57,7 +58,7 @@ export class AgentVoice {
   constructor(onSpeaking) {
     this.onSpeaking = onSpeaking; this.ctx = null; this.q = []; this.sources = new Set();
     this.nextT = 0; this.gen = 0; this.ctl = null; this.running = false; this.speaking = false; this.synth = false;
-    this.fails = 0; this.downUntil = 0; this.voice = null;
+    this.fails = 0; this.downUntil = 0; this.voice = null; this.analyser = null; this.buf = null; this.clips = new Map();
     if ('speechSynthesis' in window) {
       const pick = () => { this.voice = Voice.pickVoice(speechSynthesis.getVoices()); };
       pick(); speechSynthesis.addEventListener('voiceschanged', pick);
@@ -67,7 +68,45 @@ export class AgentVoice {
   /** call inside a user gesture (the start click) */
   unlock() {
     if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
-    if (this.ctx) this.ctx.resume();
+    if (this.ctx) {
+      this.ctx.resume();
+      if (!this.analyser) {
+        this.analyser = this.ctx.createAnalyser(); this.analyser.fftSize = 256;
+        this.analyser.connect(this.ctx.destination); this.buf = new Uint8Array(this.analyser.fftSize);
+      }
+    }
+  }
+
+  /** output level 0..1 (TTS audio RMS; a soft wobble while the speechSynthesis fallback talks) */
+  level() {
+    if (this.analyser && this.sources.size) {
+      this.analyser.getByteTimeDomainData(this.buf);
+      let s = 0; for (const v of this.buf) { const d = (v - 128) / 128; s += d * d; }
+      return Math.min(1, Math.sqrt(s / this.buf.length) * 4);
+    }
+    return this.synth ? 0.35 + 0.3 * Math.abs(Math.sin(performance.now() / 110)) : 0;
+  }
+
+  /** pre-fetch short canned reactions as decoded audio so they can play within a frame, with no server wait */
+  async prefetch(texts) {
+    if (!this.ctx) return;
+    for (const t of texts) {
+      if (this.clips.has(t)) continue;
+      try { this.clips.set(t, await this.ctx.decodeAudioData(await api.tts(t))); } catch { /* fall back to speechSynthesis at play time */ }
+    }
+  }
+
+  /** instant local reaction; skipped while the agent is already talking. returns true if it played */
+  quick(text) {
+    if (this.speaking) return false;
+    const buf = this.clips.get(text);
+    if (buf && this.ctx) { this._set(true); this._schedule(buf); return true; }
+    if (!('speechSynthesis' in window)) return false;
+    const u = new SpeechSynthesisUtterance(text); u.lang = 'ko-KR'; u.rate = 1.1; if (this.voice) u.voice = this.voice;
+    const end = () => { this.synth = false; this._maybeIdle(); };
+    u.onend = end; u.onerror = end;
+    this.synth = true; this._set(true); speechSynthesis.speak(u);
+    return true;
   }
 
   enqueue(text) {
@@ -111,7 +150,7 @@ export class AgentVoice {
 
   _schedule(buf) {
     const src = this.ctx.createBufferSource();
-    src.buffer = buf; src.connect(this.ctx.destination);
+    src.buffer = buf; src.connect(this.analyser || this.ctx.destination);
     const t = Math.max(this.ctx.currentTime + 0.03, this.nextT); // back to back: no gap between sentences
     src.start(t); this.nextT = t + buf.duration;
     this.sources.add(src);

@@ -42,9 +42,10 @@ async function handleAsr(req, url) {
   const audio = await readRaw(req);
   if (!audio.length) throw new HttpError(400, 'empty audio body');
   const lang = ['auto', 'ko', 'en'].includes(url.searchParams.get('lang')) ? url.searchParams.get('lang') : 'auto';
+  const ctx = String(url.searchParams.get('context') || '').slice(0, 500); // hotword bias for Qwen3-ASR's system prompt
   let r;
   try {
-    r = await fetch(`${config.asrUrl}/transcribe?lang=${lang}`, { method: 'POST', body: audio, headers: { 'content-type': req.headers['content-type'] || 'application/octet-stream' }, signal: AbortSignal.timeout(30000) });
+    r = await fetch(`${config.asrUrl}/transcribe?lang=${lang}${ctx ? `&context=${encodeURIComponent(ctx)}` : ''}`, { method: 'POST', body: audio, headers: { 'content-type': req.headers['content-type'] || 'application/octet-stream' }, signal: AbortSignal.timeout(30000) });
   } catch (e) { throw new HttpError(502, `asr unavailable: ${e.message}`); }
   const txt = await r.text();
   let j; try { j = JSON.parse(txt); } catch { throw new HttpError(502, `asr bad response (${r.status})`); }

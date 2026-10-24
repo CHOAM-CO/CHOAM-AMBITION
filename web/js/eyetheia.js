@@ -5,8 +5,8 @@
 // which itself ports EyeTheia (https://github.com/patherstevenson/EyeTheia, GPL-3.0) and the iTracker model
 // (Krafka et al., "Eye Tracking for Everyone"). This file and the ONNX models derived from EyeTheia are
 // therefore GPL-3.0 as well.
-import { CONFIG } from './events.js?v=r14';
-import { loadOrt } from './ort.js?v=r14';
+import { CONFIG } from './events.js?v=r15';
+import { loadOrt } from './ort.js?v=r15';
 
 const ORT_SRC = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.webgpu.min.js';
 const ORT_WASM = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/';
@@ -157,8 +157,9 @@ export class EyeTheiaSource {
     const make = (delegate) => FaceLandmarker.createFromOptions(fileset, { baseOptions: { modelAssetPath: MP_MODEL, delegate }, runningMode: 'VIDEO', numFaces: 1 });
     try { this.landmarker = await make('GPU'); } catch { this.landmarker = await make('CPU'); }
     // hand gestures on the same video, loaded in the background so start-up is not slowed
-    import('./hands.js?v=r14').then(async (m) => {
+    import('./hands.js?v=r15').then(async (m) => {
       this.hands = new m.HandGestures((g) => this.onHand && this.onHand(g));
+      this.hands.onFeedback = (f) => this.onHandFeedback && this.onHandFeedback(f);
       await this.hands.init({ GestureRecognizer }, fileset, v);
     }).catch((e) => console.warn('hand gestures unavailable', e));
 

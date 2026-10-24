@@ -1,6 +1,6 @@
 // Generic gaze-dwell button: any element registered here fills a ring while the gaze rests on it,
 // then fires onActivate. Only items of the active group respond. Click also activates (mouse fallback).
-import { CONFIG } from './events.js?v=r14';
+import { CONFIG } from './events.js?v=r15';
 
 export class Dwell {
   constructor() { this.items = []; this.group = null; this.last = performance.now(); }

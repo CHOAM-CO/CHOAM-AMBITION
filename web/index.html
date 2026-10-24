@@ -6,7 +6,7 @@
 <title>CHOAM AMBITION</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Roboto:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="style.css?v=r14">
+<link rel="stylesheet" href="style.css?v=r15">
 </head>
 <body>
 <header class="top">
@@ -39,7 +39,14 @@
     <div class="primary">
       <div class="player-wrap">
         <div id="player" class="player"></div>
+        <span class="live-pill"><i></i>LIVE</span>
+        <div id="alert-slot"></div>
         <div id="bubble-slot"></div>
+        <div id="cam">
+          <div id="orb" class="idle"><i class="o-glow"></i><i class="o-ring"></i><i class="o-core"></i><div class="o-bars"><b></b><b></b><b></b><b></b><b></b></div></div>
+          <span class="cam-name">AMBITION 에이전트</span>
+          <div id="hand-ind" hidden><span class="hi-ring"><span class="hi-emo"></span></span><span class="hi-name"></span></div>
+        </div>
         <div id="caption"><span id="caption-text">🎙 …</span><input id="caption-input" type="text" placeholder="말 대신 입력하고 Enter" autocomplete="off" hidden></div>
       </div>
       <h1 id="watch-title" class="watch-title"></h1>
@@ -66,9 +73,9 @@
         </div>
       </section>
       <section class="livechat">
-        <header class="lc-head">실시간 채팅 <span>에이전트와의 대화</span></header>
+        <header class="lc-head">채팅 <span>에이전트와 같이 보는 중</span></header>
         <div id="chat-feed" class="chat-feed"></div>
-        <div class="lc-foot">🎙 말하면 여기에 채팅으로 보여요</div>
+        <div class="lc-foot"><span class="lc-input">🎙 말하면 여기에 채팅으로 올라가요</span></div>
       </section>
     </aside>
   </section>
@@ -90,6 +97,6 @@
 <div id="gaze-dot"></div><div id="gesture-badge"></div>
 <div id="hud" class="hud" hidden></div>
 <div id="toasts"></div>
-<script type="module" src="js/main.js?v=r14"></script>
+<script type="module" src="js/main.js?v=r15"></script>
 </body>
 </html>

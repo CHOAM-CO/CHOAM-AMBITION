@@ -1,5 +1,5 @@
 /* AMBITION web: styled after YouTube's desktop dark theme (home grid, theater watch page + live chat) */
-:root { --bg:#0f0f0f; --panel:#272727; --panel-hover:#3f3f3f; --line:#303030; --text:#f1f1f1; --muted:#aaa; --accent:#3ea6ff; --accent-ink:#0f0f0f; --red:#f00; }
+:root { --bg:#141517; --panel:#25272b; --panel-hover:#34373c; --line:#2c2f34; --text:#f1f1f1; --muted:#a3a7ad; --accent:#00ffa3; --accent-ink:#06281c; --red:#f00; --green:#00ffa3; }
 * { box-sizing:border-box; }
 html, body { margin:0; background:var(--bg); color:var(--text); font:14px/20px Roboto,"YouTube Sans","Noto Sans KR","Apple SD Gothic Neo",Arial,sans-serif; }
 [hidden] { display:none !important; }
@@ -207,3 +207,72 @@ body:not(.debug) #webgazerVideoContainer { display:none !important; }
 .chip.dwell { padding:2px 10px; }
 .chip.call-speaking { color:#ffd479; }
 .chip.call-thinking { color:var(--accent); }
+
+/* ===== r15: Chzzk/Twitch-style watch page: chat column, donation alerts, agent cam orb, hand indicator ===== */
+.logo-mark { background:var(--green); }
+.logo-mark::after { border-left-color:#06281c; }
+.btn.primary { background:var(--green); color:#06281c; }
+.fchip.active { background:var(--green); color:#06281c; }
+.addbar:focus-within { border-color:var(--green); }
+.watch { grid-template-columns:minmax(0, 1fr) 360px; }
+.live-pill { position:absolute; left:12px; top:12px; z-index:23; display:flex; align-items:center; gap:6px; background:#e91916; color:#fff; font-weight:700; font-size:12px; line-height:18px; padding:1px 8px; border-radius:4px; pointer-events:none; }
+.live-pill i { width:6px; height:6px; border-radius:50%; background:#fff; animation:blink 1.4s infinite; }
+@keyframes blink { 50% { opacity:.3; } }
+.livechat { background:#18191c; border-color:var(--line); }
+.lc-head { border-bottom:1px solid var(--line); }
+.lc-foot .lc-input { display:block; background:#25272b; border-radius:8px; padding:8px 12px; color:var(--muted); font-size:13px; }
+.chat-feed { gap:3px; padding:8px 10px; }
+.msg { display:block; padding:3px 6px; border-radius:6px; font-size:14px; line-height:20px; animation:msgIn .2s ease-out; }
+@keyframes msgIn { from { opacity:0; transform:translateY(6px); } }
+.msg .av { display:none; }
+.msg .mb { display:block; }
+.msg .who { margin-right:0; font-weight:700; }
+.msg .who:not(:empty)::after { content:":"; margin:0 6px 0 1px; color:var(--muted); font-weight:400; }
+.msg .badge { display:inline-block; vertical-align:1px; margin-right:5px; padding:0 5px; border-radius:4px; font-size:10px; font-weight:700; line-height:15px; background:#33363b; color:#ddd; }
+.msg.agent .badge { background:var(--green); color:#06281c; }
+.msg.agent .who { color:var(--green); }
+.msg.user .who { color:#ffd23f; }
+.msg.user .badge { background:#ffd23f; color:#3a2a00; }
+.msg.sys { background:#1b2a24; border-left:3px solid var(--green); }
+.msg.sys .txt { color:#cfeee2; }
+.msg.cap-msg { background:#1b2230; border-left:3px solid #4a8cff; }
+.msg.cap-msg .who { color:#8fb6ff; }
+.msg .mini .t { color:var(--accent); }
+/* donation alerts */
+#alert-slot { position:absolute; left:50%; top:13%; transform:translateX(-50%); z-index:24; width:min(580px, 72%); pointer-events:none; }
+.don-alert, .bubble { border-radius:16px; background:linear-gradient(135deg,#0d3d2c,#15171a 75%); border:2px solid var(--green); box-shadow:0 0 28px #00ffa355; }
+.don-alert { padding:12px 22px 16px; text-align:center; animation:donIn .45s cubic-bezier(.2,1.5,.4,1); }
+.don-alert.out { animation:donOut .3s forwards; }
+.don-line { font-size:34px; line-height:44px; font-weight:900; color:#fff; text-shadow:0 2px 0 #000, 0 0 14px #00ffa3aa; word-break:keep-all; }
+@keyframes donIn { from { transform:translateY(-30px) scale(.6); opacity:0; } }
+@keyframes donOut { to { transform:translateY(-16px) scale(.9); opacity:0; } }
+.don-head { display:flex; align-items:center; gap:8px; font-size:15px; color:#bfffe6; margin-bottom:4px; }
+.don-av { width:26px; height:26px; border-radius:50%; background:var(--green); color:#06281c; font-weight:900; font-size:11px; display:flex; align-items:center; justify-content:center; }
+.don-badge { margin-left:auto; background:#ffd23f; color:#3a2a00; font-weight:900; border-radius:99px; padding:0 10px; font-size:13px; }
+.bubble { animation:donIn .45s cubic-bezier(.2,1.5,.4,1); padding:12px 22px 16px; }
+.bubble p { font-size:28px; line-height:38px; font-weight:800; margin:0 0 6px; text-shadow:0 2px 0 #000; }
+.bubble .btn.primary { background:var(--green); color:#06281c; }
+#bubble-slot { bottom:62px; }
+/* agent cam (orb) */
+#cam { position:absolute; top:12px; right:12px; z-index:23; width:116px; display:flex; flex-direction:column; align-items:center; gap:6px; pointer-events:none; }
+.cam-name { font-size:11px; font-weight:700; background:#000b; padding:0 8px; border-radius:4px; color:var(--green); line-height:16px; }
+#orb { --lvl:0; --gx:0; --gy:0; position:relative; width:104px; height:104px; border-radius:50%; background:#0a0c10; box-shadow:0 0 0 2px #00ffa366, 0 8px 24px #000b; }
+#orb i { position:absolute; border-radius:50%; }
+.o-glow { inset:-10px; background:radial-gradient(circle,#00ffa3 0,transparent 68%); opacity:calc(.18 + var(--lvl) * .7); transition:opacity .08s; }
+.o-core { inset:12px; background:radial-gradient(circle at calc(50% + var(--gx) * 22%) calc(50% + var(--gy) * 22%), #f4fffa 0 7%, #6dffc8 24%, #1ea4ff 62%, #1a2a6b 100%); transform:scale(calc(1 + var(--lvl) * .3)); transition:transform .08s, filter .3s; animation:breathe 4s ease-in-out infinite; }
+@keyframes breathe { 50% { transform:scale(calc(1.04 + var(--lvl) * .3)); } }
+.o-ring { inset:2px; border:3px solid transparent; }
+#orb.listening .o-ring { border-color:#00ffa3; box-shadow:0 0 14px #00ffa3; }
+#orb.thinking .o-ring { border-top-color:#00ffa3; border-right-color:#00ffa355; animation:spin 1s linear infinite; }
+#orb.thinking .o-core { filter:saturate(.5) brightness(.75); }
+@keyframes spin { to { transform:rotate(360deg); } }
+#orb.looking .o-core { filter:brightness(1.12); }
+.o-bars { position:absolute; inset:0; display:none; align-items:center; justify-content:center; gap:5px; }
+#orb.speaking .o-bars { display:flex; }
+.o-bars b { width:7px; height:8px; border-radius:4px; background:#fff; opacity:.9; box-shadow:0 0 6px #00ffa3; }
+/* live hand gesture indicator */
+#hand-ind { display:flex; align-items:center; gap:8px; background:#000c; border:1px solid #00ffa388; border-radius:99px; padding:3px 12px 3px 4px; font-size:13px; font-weight:700; color:#fff; white-space:nowrap; }
+#hand-ind.unmapped { opacity:.6; border-color:#555; }
+.hi-ring { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:19px; background:conic-gradient(var(--green) var(--hp,0deg), #3a3d42 0); position:relative; }
+.hi-ring::before { content:""; position:absolute; inset:3px; border-radius:50%; background:#14161a; }
+.hi-emo { position:relative; }

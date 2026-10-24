@@ -1,5 +1,5 @@
 // Thin API client. ?mock=1 swaps every /api call for local fake responses.
-import { mockApi } from './mock.js?v=r14';
+import { mockApi } from './mock.js?v=r15';
 
 export const PARAMS = new URLSearchParams(location.search);
 export const MOCK = PARAMS.get('mock') === '1';
@@ -30,9 +30,9 @@ async function call(method, path, body) {
 const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** POST /api/asr: wav Blob -> {text, lang, ms, totalMs} */
-async function asr(blob) {
+async function asr(blob, context) {
   if (MOCK) return mockApi('POST', '/api/asr', null);
-  const r = await fetch('/api/asr?lang=auto', { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: blob });
+  const r = await fetch('/api/asr?lang=auto' + (context ? '&context=' + encodeURIComponent(String(context).slice(0, 500)) : ''), { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: blob });
   if (!r.ok) throw new Error(`asr ${r.status}`);
   return r.json();
 }

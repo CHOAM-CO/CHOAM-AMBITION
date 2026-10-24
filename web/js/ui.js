@@ -1,5 +1,5 @@
 // DOM helpers: toasts, capture panel, agent bubble, summary.
-import { CONFIG } from './events.js?v=r14';
+import { CONFIG } from './events.js?v=r15';
 
 const $ = (s) => document.querySelector(s);
 export const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -42,17 +42,21 @@ function chatPush(el) {
   f.scrollTop = f.scrollHeight;
   return el;
 }
-function msgShell(cls, avatar, who) {
+// Chzzk/Twitch-style chat line: [badge] nickname: text, nickname coloured per speaker, auto-scroll
+function msgShell(cls, avatar, who, badge) {
   const m = document.createElement('div'); m.className = 'msg ' + cls;
   const av = document.createElement('span'); av.className = 'av'; av.textContent = avatar;
   const mb = document.createElement('div'); mb.className = 'mb';
+  if (badge) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = badge; mb.appendChild(b); }
   const w = document.createElement('span'); w.className = 'who'; w.textContent = who;
   mb.appendChild(w); m.append(av, mb);
   return { m, mb };
 }
-/** who: 'agent' | 'user'. returns {setText, setItems, remove} */
-export function chatAdd({ who, text, items, links }) {
-  const { m, mb } = who === 'agent' ? msgShell('agent', 'AI', '에이전트') : msgShell('user', '나', '나');
+/** who: 'agent' | 'user' | 'sys' (gesture / event line). returns {setText, setItems, remove} */
+export function chatAdd({ who, text, items, links, badge }) {
+  const { m, mb } = who === 'agent' ? msgShell('agent', 'AI', '에이전트', 'AI')
+    : who === 'sys' ? msgShell('sys', '', '', badge || '제스처')
+    : msgShell('user', '나', '나', badge || '');
   const t = document.createElement('span'); t.className = 'txt'; t.textContent = text || ''; mb.appendChild(t);
   const api = {
     setText(x) { t.textContent = x; feed().scrollTop = feed().scrollHeight; },
@@ -89,7 +93,7 @@ export function addCapture({ thumb, videoTime, kind }) {
   $('#captures').scrollTo({ left: 0, behavior: 'smooth' }); // newest first: keep it in view
   capCount++; setCount();
   // the same event as a live-chat message with its thumbnail
-  const { m, mb } = msgShell('cap-msg', '📷', `장면 캡처 · ${fmtTime(videoTime)}`);
+  const { m, mb } = msgShell('cap-msg', '📷', `장면 캡처 · ${fmtTime(videoTime)}`, '📷');
   const mini = document.createElement('div'); mini.className = 'mini';
   const mi = document.createElement('img'); mi.alt = ''; if (thumb) mi.src = thumb;
   const mt = document.createElement('div'); const ml = document.createElement('strong'); ml.textContent = '분석 중…'; const mg = document.createElement('span'); mg.className = 'tag'; mg.hidden = true;
@@ -136,6 +140,45 @@ export function addWish({ id, thumb, label, category, links }) {
   window.dispatchEvent(new CustomEvent('wish-added'));
 }
 
+// donation-alert header (Toonation/Twip style): agent avatar + name + amount-like badge
+function donHead(badge) {
+  const h = document.createElement('div'); h.className = 'don-head';
+  const a = document.createElement('span'); a.className = 'don-av'; a.textContent = 'AI';
+  const n = document.createElement('b'); n.textContent = '에이전트';
+  const t = document.createElement('span'); t.className = 'don-badge'; t.textContent = badge;
+  h.append(a, n, t); return h;
+}
+
+// transient donation alerts (reactions, acks): one at a time, queued so they never overlap
+const alertQ = []; let alertBusy = false;
+export function alertPop({ text, emoji = '💬', badge = '반응', ms = 2600 }) {
+  if (alertQ.length >= 3) alertQ.shift();
+  alertQ.push({ text, emoji, badge, ms }); nextAlert();
+}
+function nextAlert() {
+  if (alertBusy || !alertQ.length) return;
+  const { text, emoji, badge, ms } = alertQ.shift();
+  alertBusy = true;
+  const el = document.createElement('div'); el.className = 'don-alert';
+  const big = document.createElement('div'); big.className = 'don-line'; big.textContent = `${emoji} ${text}`;
+  el.append(donHead(badge), big);
+  $('#alert-slot').appendChild(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => { el.remove(); alertBusy = false; nextAlert(); }, 300); }, ms);
+}
+
+// live hand-gesture indicator next to the agent cam: emoji + name, ring fills while a held gesture is being held
+const HAND = { Thumb_Up: ['👍', '좋아요'], Thumb_Down: ['👎', '별로'], Open_Palm: ['✋', '멈춤/재생'], Pointing_Up: ['☝️', '이거'], Victory: ['✌️', '다음'], Closed_Fist: ['✊', '주먹'], ILoveYou: ['🤟', '사랑해'] };
+let handTimer = null;
+export function handShow(name, progress = 0, mapped = true, hideMs = 450) {
+  const el = $('#hand-ind'); if (!el) return;
+  const [emo, label] = HAND[name] || ['🖐', name];
+  el.hidden = false; el.classList.toggle('unmapped', !mapped);
+  el.querySelector('.hi-emo').textContent = emo; el.querySelector('.hi-name').textContent = label;
+  el.style.setProperty('--hp', Math.round(progress * 360) + 'deg');
+  clearTimeout(handTimer); handTimer = setTimeout(() => { el.hidden = true; }, hideMs);
+}
+export function handHide() { /* feedback gap: the timer hides it */ }
+
 let bubbleEl = null, bubbleTimer = null, bubbleText = null;
 export const bubbleActive = () => !!bubbleEl;
 export function dismissBubble() {
@@ -143,17 +186,17 @@ export function dismissBubble() {
   if (bubbleEl) { bubbleEl.remove(); bubbleEl = null; bubbleText = null; }
 }
 /** opens the question bubble; returns false if one is already open (one at a time) */
-export function showBubble({ say, onYes, onNo }) {
+export function showBubble({ say, onYes, onNo, yesLabel = '찾아봐', noLabel = '괜찮아', badge = '질문' }) {
   if (bubbleEl) return false;
   const el = document.createElement('div');
   el.className = 'bubble';
   bubbleText = document.createElement('p'); bubbleText.textContent = say;
   const row = document.createElement('div'); row.className = 'row'; row.dataset.role = 'choices';
-  const yes = document.createElement('button'); yes.className = 'btn primary'; yes.textContent = '찾아봐';
-  const no = document.createElement('button'); no.className = 'btn'; no.textContent = '괜찮아';
+  const yes = document.createElement('button'); yes.className = 'btn primary'; yes.textContent = yesLabel;
+  const no = document.createElement('button'); no.className = 'btn'; no.textContent = noLabel;
   yes.onclick = onYes; no.onclick = onNo;
   row.append(yes, no);
-  el.append(bubbleText, row);
+  el.append(donHead(badge), bubbleText, row);
   $('#bubble-slot').appendChild(el);
   bubbleEl = el;
   bubbleTimer = setTimeout(dismissBubble, CONFIG.bubbleTtlMs);
@@ -178,7 +221,7 @@ export function openChatBubble(text) {
   const el = document.createElement('div');
   el.className = 'bubble chat';
   bubbleText = document.createElement('p'); bubbleText.textContent = text;
-  el.appendChild(bubbleText);
+  el.append(donHead('답변'), bubbleText);
   $('#bubble-slot').appendChild(el);
   bubbleEl = el;
   bubbleTimer = setTimeout(dismissBubble, 60000);
