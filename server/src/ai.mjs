@@ -33,25 +33,28 @@ function parseJson(text) {
   return JSON.parse(m[0]);
 }
 
+export const CATEGORIES = ['product', 'place', 'food', 'animal', 'text', 'person', 'scene', 'other'];
+
 const VISION_SYSTEM = `You analyse an image cropped from a video frame. A semi-transparent RED RING marks the viewer's estimated gaze point. The estimate is imprecise: the true gaze can be ~15-20% of the image size away from the ring.
-Task: pick the SINGLE most plausible buyable product the viewer is looking at. Prefer the product nearest the ring; if the ring sits on background or a non-product, a clearly salient product nearby is allowed. Never mention or describe the ring itself, and never treat the ring as an object.
+Task: identify what the viewer is most plausibly attending to near the ring, WHATEVER it is - a product, a place/landmark, food, an animal, text/a sign, a person, a scene/activity, or something else. Prefer what is nearest the ring; a clearly salient thing nearby is allowed. Never mention or describe the ring itself, and never treat the ring as an object.
 Answer with ONE JSON object only, no prose:
 {
- "label": short Korean noun phrase for that product incl. colour/material, e.g. "갈색 가죽 토트백" (null if no buyable product is plausible),
- "category": Korean category word, e.g. "가방", "신발", "시계", "의류", "가전", "기타",
- "description": one Korean sentence describing the product (not the ring),
- "isProduct": true only if it is a clear, individually buyable consumer product (bag, shoes, watch, clothing, gadget...). false for people, scenery, food being eaten, built-in furniture, text, blur, or when nothing buyable is plausible,
- "confidence": 0..1 that label/isProduct are right,
- "query": short Korean shopping search query, 2-4 words, generic type + one key attribute (colour/material); add brand/model only if clearly readable; null if not a product,
- "say": natural Korean polite speech (해요체) phrased as a YES/NO QUESTION the viewer can answer with a head nod, confirming the product and offering to look it up, e.g. "방금 그 빨간 서류가방 보신 거 맞죠? 찾아볼까요?"; null if not a product,
- "alternatives": array of up to 2 OTHER plausible buyable products visible in the crop (different objects from "label"), most likely first; [] if none. Each: {"label": Korean noun phrase, "category": Korean category word, "query": short Korean shopping query (2-4 words), "say": a soft-retreat yes/no question that starts with "아 이거 아닌가요...? " and then offers this product, e.g. "아 이거 아닌가요...? 그럼 옆에 갈색 구두요?"}
+ "label": short Korean noun phrase for that thing (incl. colour/material for products; the place name if recognisable; the dish name for food; the species for animals; the text itself for signs; for a person only appearance/role/outfit such as "베이지 트렌치코트를 입은 여성"). null if nothing clear,
+ "category": exactly one of "product" | "place" | "food" | "animal" | "text" | "person" | "scene" | "other",
+ "description": one Korean sentence. For category "text": the Korean translation/explanation of the text instead,
+ "clear": true only if the thing is clearly identifiable AND the viewer could plausibly want something useful about it (a shopping link, a map, a recipe, a translation, more info). false for blur, empty background, or when you are unsure,
+ "confidence": 0..1 that label/category/clear are right,
+ "query": short Korean web search query (2-4 words) that would help the viewer: product -> generic type + one key attribute (add brand/model only if clearly readable); place -> place name (+ city if known); food -> dish name; text -> the text; others -> a natural topic query. null if clear is false,
+ "say": natural Korean polite speech (해요체), ONE sentence, a YES/NO QUESTION the viewer can answer with a head nod, tailored to the category, offering help. Examples: product "방금 그 갈색 구두 보신 거 맞죠? 찾아볼까요?"; place "저기 어딘지 궁금하세요? 찾아볼까요?"; food "저 음식 보신 거죠? 레시피나 맛집 찾아볼까요?"; text "저 글자 보신 거 맞죠? 무슨 뜻인지 알려드릴까요?"; animal "저 동물 보신 거 맞죠? 알아볼까요?"; person (outfit only) "저 분 옷차림 보신 거 맞죠? 비슷한 옷 찾아볼까요?"; scene "저 장면 궁금하세요? 더 찾아볼까요?". null if clear is false,
+ "alternatives": array of up to 2 OTHER plausible things in the crop (different from "label"), most likely first; [] if none. Each: {"label", "category" (same enum), "description", "query", "say": a soft-retreat yes/no question that starts with "아 이거 아닌가요...? " and then offers this thing, e.g. "아 이거 아닌가요...? 그럼 옆에 갈색 구두요?"}
 }
-LABEL CONSISTENCY (applies to "label" and every alternative): you may be given labels already used earlier in this session. If a product is the same object/type as one of them, reuse that label EXACTLY (character for character). Only invent a new label for a genuinely different product.`;
+Never identify a real person by their face or name them from appearance. LABEL CONSISTENCY (applies to "label" and every alternative): you may be given labels already used earlier in this session. If a thing is the same object/type as one of them, reuse that label EXACTLY (character for character). Only invent a new label for a genuinely different thing.`;
 
+const normCat = (c) => { const x = String(c || '').toLowerCase().trim(); return CATEGORIES.includes(x) ? x : 'other'; };
 
 export async function analyzeCrop(jpegBuf, knownLabels = []) {
   const hint = knownLabels.length
-    ? `Labels already used in this session: ${JSON.stringify(knownLabels)}. Reuse one exactly if it is the same object.`
+    ? `Labels already used in this session: ${JSON.stringify(knownLabels)}. Reuse one exactly if it is the same thing.`
     : 'No labels used yet in this session.';
   const context = {
     systemPrompt: VISION_SYSTEM,
@@ -59,20 +62,17 @@ export async function analyzeCrop(jpegBuf, knownLabels = []) {
       role: 'user', timestamp: Date.now(),
       content: [
         { type: 'image', data: jpegBuf.toString('base64'), mimeType: 'image/jpeg' },
-        { type: 'text', text: `${hint}\nReturn the JSON for the most plausible buyable product the viewer is looking at.` },
+        { type: 'text', text: `${hint}\nReturn the JSON for what the viewer is most plausibly attending to.` },
       ],
     }],
   };
-  const res = await completeSimple(visionModel, context, { apiKey: config.apiKey, maxTokens: 700, onPayload: visionPayload });
+  const res = await completeSimple(visionModel, context, { apiKey: config.apiKey, maxTokens: 800, onPayload: visionPayload });
   if (res.stopReason === 'error') throw new Error(res.errorMessage || 'vision call failed');
   const j = parseJson(textOf(res));
-  let label = j.label ? String(j.label).trim() : null;
-  // server-side guard: whitespace/case variants of a known label collapse to the known spelling
-  const known = label && knownLabels.find((k) => normLabel(k) === normLabel(label));
-  if (known) label = known;
-  const isProduct = !!(label && j.isProduct === true);
   const canon = (l) => { const t = String(l).trim(); return knownLabels.find((k) => normLabel(k) === normLabel(t)) || t; };
-  const seen = new Set(isProduct ? [normLabel(label)] : []);
+  const label = j.label ? canon(j.label) : null;
+  const clear = !!(label && j.clear === true);
+  const seen = new Set(clear ? [normLabel(label)] : []);
   const alternatives = [];
   for (const a of Array.isArray(j.alternatives) ? j.alternatives : []) {
     if (!a || !a.label || !a.query) continue;
@@ -80,28 +80,43 @@ export async function analyzeCrop(jpegBuf, knownLabels = []) {
     if (seen.has(normLabel(l))) continue;
     seen.add(normLabel(l));
     alternatives.push({
-      label: l, category: a.category ? String(a.category) : null, query: String(a.query),
+      label: l, category: normCat(a.category), description: a.description ? String(a.description) : null, query: String(a.query),
       say: /^아 이거 아닌가요/.test(a.say || '') ? String(a.say) : `아 이거 아닌가요...? 그럼 ${l}요?`,
     });
     if (alternatives.length >= 2) break;
   }
   return {
     alternatives,
-    label: isProduct ? label : null,
-    category: isProduct && j.category ? String(j.category) : null,
-    description: isProduct && j.description ? String(j.description) : null,
-    isProduct,
+    label: clear ? label : null,
+    category: clear ? normCat(j.category) : null,
+    description: clear && j.description ? String(j.description) : null,
+    clear,
     confidence: Number.isFinite(+j.confidence) ? +j.confidence : 0,
-    query: isProduct && j.query ? String(j.query) : null,
-    say: isProduct && j.say ? String(j.say) : null,
+    query: clear && j.query ? String(j.query) : null,
+    say: clear && j.say ? String(j.say) : null,
     usage: res.usage,
   };
 }
 
-export const shopLinks = (q) => q ? [
-  { title: '쿠팡에서 검색', url: `https://www.coupang.com/np/search?q=${encodeURIComponent(q)}` },
-  { title: '네이버 쇼핑에서 검색', url: `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(q)}` },
-] : [];
+const enc = encodeURIComponent;
+// Links by category (query null -> none).
+export function linksFor(q, category) {
+  if (!q) return [];
+  switch (category) {
+    case 'product': return [
+      { title: '쿠팡에서 검색', url: `https://www.coupang.com/np/search?q=${enc(q)}` },
+      { title: '네이버 쇼핑에서 검색', url: `https://search.shopping.naver.com/search/all?query=${enc(q)}` }];
+    case 'place': return [
+      { title: '네이버 지도에서 검색', url: `https://map.naver.com/p/search/${enc(q)}` },
+      { title: '구글 지도에서 검색', url: `https://www.google.com/maps/search/${enc(q)}` }];
+    case 'food': return [
+      { title: '유튜브에서 레시피 검색', url: `https://www.youtube.com/results?search_query=${enc(q + ' 레시피')}` },
+      { title: '네이버에서 맛집 검색', url: `https://search.naver.com/search.naver?query=${enc(q + ' 맛집')}` }];
+    default: return [
+      { title: '네이버에서 검색', url: `https://search.naver.com/search.naver?query=${enc(q)}` },
+      { title: '유튜브에서 검색', url: `https://www.youtube.com/results?search_query=${enc(q)}` }];
+  }
+}
 
 // ---- Summary agent -------------------------------------------------------------------------
 
@@ -111,13 +126,13 @@ function expandEntries(captures, feedback = {}) {
   const out = [];
   for (const c of captures) {
     const cands = [];
-    if (c.item && c.isProduct) cands.push({ label: c.item.label, category: c.item.category, query: c.query });
-    for (const a of c.alternatives || []) if (feedback[normLabel(a.label)]?.answer === 'yes') cands.push({ label: a.label, category: a.category, query: a.query });
+    if (c.item && (c.clear ?? c.isProduct)) cands.push({ label: c.item.label, category: c.item.category, query: c.query, description: c.item.description });
+    for (const a of c.alternatives || []) if (feedback[normLabel(a.label)]?.answer === 'yes') cands.push({ label: a.label, category: a.category, query: a.query, description: a.description });
     for (const k of cands) {
       const ans = feedback[normLabel(k.label)]?.answer || null;
       if (ans === 'no') continue;
       out.push({ captureId: c.captureId, imageUrl: c.imageUrl, videoTime: c.videoTime, kind: c.kind, dwellMs: c.dwellMs,
-        item: { label: k.label, category: k.category }, isProduct: true, query: k.query, answer: ans });
+        item: { label: k.label, category: k.category, description: k.description }, clear: true, query: k.query, answer: ans });
     }
   }
   return out;
@@ -145,17 +160,17 @@ export async function summarize(session, captures) {
   const groups = aggregate(entries);
   const link = (c) => ({
     captureId: c.captureId, imageUrl: c.imageUrl, videoTime: c.videoTime,
-    label: c.item?.label ?? null, links: shopLinks(c.query),
+    label: c.item?.label ?? null, category: c.item?.category ?? null, links: linksFor(c.query, c.item?.category),
   });
   if (!groups.length) {
-    return { say: '아직 눈여겨보신 상품이 없어요. 영상을 더 보시면서 관심 가는 물건을 쳐다봐 주세요.', recommendations: [] };
+    return { say: '아직 관심 있어 보였던 것이 없어요. 영상을 더 보시면서 관심 가는 곳을 쳐다봐 주세요.', recommendations: [] };
   }
 
   let submitted = null;
   const tools = [
     {
       name: 'list_captures', label: 'List captures',
-      description: 'List every gaze capture of this viewing session (chronological) with identified object, dwell time in ms and video time in seconds.',
+      description: 'List every gaze capture of this viewing session (chronological) with what the viewer attended to (label + category), dwell time in ms and video time in seconds.',
       parameters: Type.Object({}),
       execute: async () => ({
         content: [{ type: 'text', text: JSON.stringify(entries.map((c) => ({
@@ -167,7 +182,7 @@ export async function summarize(session, captures) {
     },
     {
       name: 'aggregate_by_label', label: 'Aggregate by label',
-      description: 'Group product captures by object label: capture count (repeat looks), total/max dwell ms, best capture id, userAnswer ("yes" = viewer confirmed by nodding). Sorted with viewer-confirmed products first, then by total dwell. Products the viewer rejected are already removed.',
+      description: 'Group captures by label (any category: product, place, food, animal, text, person, scene, other): capture count (repeat looks), total/max dwell ms, best capture id, userAnswer ("yes" = viewer confirmed by nodding). Sorted with viewer-confirmed products first, then by total dwell. Products the viewer rejected are already removed.',
       parameters: Type.Object({}),
       execute: async () => ({ content: [{ type: 'text', text: JSON.stringify(groups) }], details: {} }),
     },
@@ -188,14 +203,14 @@ export async function summarize(session, captures) {
 
   const agent = new Agent({
     initialState: {
-      systemPrompt: `You are a shopping assistant reviewing what a viewer's eyes lingered on while watching a video.
-Use the tools to review the session's captures, weigh longer dwell and repeated looks at the same product (same label across captures) as stronger interest, ignore non-products and near-duplicates, then call submit_recommendations once with the top 3-5 distinct products. Each reason is one natural Korean polite sentence mentioning the evidence (e.g. 몇 초 동안 / 여러 번 다시 봤어요). Products with userAnswer \"yes\" were explicitly confirmed by the viewer (nod): rank them above unconfirmed ones. Products the viewer rejected are already excluded. Use the capture with the longest dwell as captureId.`,
+      systemPrompt: `You are an assistant reviewing what a viewer's eyes lingered on while watching a video (\"관심 있어 보였던 것들\"): products, places, food, animals, text, people's outfits, scenes - any category.
+Use the tools to review the session's captures, weigh longer dwell and repeated looks at the same product (same label across captures) as stronger interest, ignore near-duplicates, then call submit_recommendations once with the top 3-5 distinct things across categories. Each reason is one natural Korean polite sentence mentioning the evidence (e.g. 몇 초 동안 / 여러 번 다시 봤어요). Products with userAnswer \"yes\" were explicitly confirmed by the viewer (nod): rank them above unconfirmed ones. Products the viewer rejected are already excluded. Use the capture with the longest dwell as captureId.`,
       model: summaryModel, tools, messages: [],
     },
     getApiKey: () => config.apiKey,
     onPayload: summaryPayload,
   });
-  await agent.prompt(`Session "${session.videoTitle || session.videoUrl}" has ${captures.length} captures. Review them and submit the recommendations.`);
+  await agent.prompt(`Session "${session.videoTitle || session.videoUrl}" has ${captures.length} captures. Review them and submit the 3-5 most interesting things to the viewer.`);
   const err = agent.state.errorMessage;
 
   // Validate agent output against real entries; fall back to confirmed-then-dwell ranking if the agent failed.
@@ -210,9 +225,9 @@ Use the tools to review the session's captures, weigh longer dwell and repeated 
   if (!recs.length) {
     recs = groups.slice(0, 5).map((g) => {
       const c = lookup(g.bestCaptureId, g.label);
-      return { ...link(c), reason: g.userAnswer === 'yes' ? '고개를 끄덕이며 맞다고 하셨던 상품이에요.' : `${Math.round(g.totalDwellMs / 1000)}초 동안 ${g.captureCount}번 보셨어요.` };
+      return { ...link(c), reason: g.userAnswer === 'yes' ? '고개를 끄덕이며 맞다고 하셨던 것이에요.' : `${Math.round(g.totalDwellMs / 1000)}초 동안 ${g.captureCount}번 보셨어요.` };
     });
-    return { say: '눈여겨보신 상품들을 정리해 봤어요.', recommendations: recs, fallback: true, error: err || 'agent returned nothing' };
+    return { say: '관심 있어 보였던 것들을 정리해 봤어요.', recommendations: recs, fallback: true, error: err || 'agent returned nothing' };
   }
-  return { say: submitted.say || '눈여겨보신 상품들을 정리해 봤어요.', recommendations: recs.slice(0, 5) };
+  return { say: submitted.say || '관심 있어 보였던 것들을 정리해 봤어요.', recommendations: recs.slice(0, 5) };
 }

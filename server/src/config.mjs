@@ -17,6 +17,8 @@ export const config = {
   port: Number(process.env.AMBITION_PORT || 8788),
   dataDir: process.env.AMBITION_DATA_DIR || 'D:\\ambition\\data',
   mediaDir: process.env.AMBITION_MEDIA_DIR || 'D:\\ambition\\media',
+  binDir: process.env.AMBITION_BIN_DIR || 'D:\\ambition\\bin',
+  ytCacheDir: process.env.AMBITION_YT_CACHE_DIR || 'D:\\ambition\\yt-cache',
   apiKey: process.env.ANTHROPIC_API_KEY || '',
   visionModel: process.env.AMBITION_VISION_MODEL || 'claude-haiku-5-5',
   summaryModel: process.env.AMBITION_SUMMARY_MODEL || 'claude-sonnet-5-5',
