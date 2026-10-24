@@ -1,0 +1,13 @@
+# secrets guard: never commit keys or env files
+node_modules/
+*.env
+.env
+.env.*
+secrets/
+api.env
+*.pem
+*.key
+# runtime data
+/data/
+/server/data/
+*.log

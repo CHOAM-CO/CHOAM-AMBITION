@@ -1,0 +1,13 @@
+{
+  "name": "ambition-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.mjs",
+  "scripts": { "start": "node src/index.mjs" },
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "@mariozechner/pi-agent-core": "0.73.1",
+    "@mariozechner/pi-ai": "0.73.1"
+  }
+}

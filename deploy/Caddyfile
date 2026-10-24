@@ -1,7 +1,29 @@
-# Static server for the web/ dir. Run: caddy run --config <this file> --adapter caddyfile
+# Static server for web/ + API + media. Run: caddy run --config <this file> --adapter caddyfile
 http://:8787 {
 	root * D:/ambition/repo/web
-	file_server
+
+	# API (Node, 127.0.0.1:8788). Captures arrive as base64 JPEG, so allow ~10 MB bodies.
+	handle /api/* {
+		request_body {
+			max_size 10MB
+		}
+		reverse_proxy 127.0.0.1:8788 {
+			transport http {
+				response_header_timeout 90s
+			}
+		}
+	}
+
+	# Test videos live outside the repo. Prefix stripped: /media/x.mp4 -> D:/ambition/media/x.mp4
+	# (file_server answers Range requests, so seeking works)
+	handle_path /media/* {
+		root * D:/ambition/media
+		file_server
+	}
+
+	handle {
+		file_server
+	}
 }
 
 # Enable later when public 80/443 exists:
