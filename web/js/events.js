@@ -59,6 +59,9 @@ export const CONFIG = {
     smoothing: { minCutoff: 0.4, beta: 0.005, window: 6, alpha: 0.2, deadzonePx: 25 },
   },
 
+  // hand gestures (MediaPipe GestureRecognizer): Thumb_Up=yes, Thumb_Down=no, Open_Palm=pause/resume, Pointing_Up=capture here, Victory=next video
+  hands: { fps: 10, minScore: 0.6, holdMs: 600, cooldownMs: 1500 },
+
   // voice chat
   voice: { duckLevel: 0.2, minChars: 2 }, // duck the video to 20% while the viewer talks; ignore finals of <= minChars
 

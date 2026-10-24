@@ -1,13 +1,13 @@
-import { api, MOCK, PARAMS } from './api.js?v=r10';
-import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r10';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r10';
-import { EyeTheiaSource } from './eyetheia.js?v=r10';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r10';
-import { grab } from './capture.js?v=r10';
-import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime, openChatBubble, updateChatBubble } from './ui.js?v=r10';
-import { HeadGestures } from './gesture.js?v=r10';
-import { Dwell } from './dwell.js?v=r10';
-import { Voice } from './voice.js?v=r10';
+import { api, MOCK, PARAMS } from './api.js?v=r11';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r11';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r11';
+import { EyeTheiaSource } from './eyetheia.js?v=r11';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r11';
+import { grab } from './capture.js?v=r11';
+import { toast, addCapture, clearCaptures, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, bubbleLinks, flashBadge, renderSummary, fmtTime, openChatBubble, updateChatBubble } from './ui.js?v=r11';
+import { HeadGestures } from './gesture.js?v=r11';
+import { Dwell } from './dwell.js?v=r11';
+import { Voice } from './voice.js?v=r11';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -50,6 +50,7 @@ $('#btn-start').onclick = async () => {
         }
       }
       setup(null);
+      S.source.onHand = handAction; // EyeTheia only: hand gestures from the same camera
       startTick(); // gaze dot visible during calibration
       if (S.source.mode === 'webcam') await runCalibration($('#calib'), S.source, () => sm, PARAMS.get('calib') === 'click');
     }
@@ -207,7 +208,7 @@ function tick() {
 }
 
 // ---------- capture ----------
-async function onGazeEvent(ev) {
+async function onGazeEvent(ev) { // ev.force: pointed at it (hand), always ask
   const p = S.player;
   if (!p || S.finished || S.state !== 'watch') return;
   const token = S.token, v = S.video;
@@ -231,6 +232,10 @@ async function onGazeEvent(ev) {
     if (token !== S.token) return;
     card.setResult(res);
     res.__thumb = shot.image || res.imageUrl;
+    if (ev.force) { // pointing: force the question bubble
+      dismissBubble(); dlg = null;
+      res.say = '이거 말씀하시는 거죠?'; res.speak = true;
+    }
     if (res.speak && res.say && !S.finished) openDialog(card, res);
   } catch (e) {
     if (token !== S.token) return;
@@ -293,11 +298,31 @@ function onGesture(g) {
   flashBadge(g === 'nod' ? '끄덕 ✓' : '도리도리 ✗', g === 'nod');
   g === 'nod' ? answerYes(dlg) : answerNo(dlg);
 }
-// keyboard stand-ins: Y = nod, N = shake (works in every mode; handy without a camera)
+// ---------- hand gestures ----------
+function pointNow() { // capture right now at the current gaze point
+  if (S.state !== 'watch' || !S.player || !sm || S.finished) return;
+  detector.lastCap = { t: performance.now(), x: sm.x, y: sm.y }; // keep the gaze detector from double-capturing
+  onGazeEvent({ kind: 'fixation', x: sm.x, y: sm.y, dwellMs: 0, force: true });
+}
+function handAction(name) {
+  const watching = S.state === 'watch' && S.player;
+  switch (name) {
+    case 'Thumb_Up': if (dlg && dlg.asking && bubbleActive()) { flashBadge('👍', true); answerYes(dlg); } break;
+    case 'Thumb_Down': if (dlg && dlg.asking && bubbleActive()) { flashBadge('👎', false); answerNo(dlg); } break;
+    case 'Open_Palm': if (watching) { flashBadge('✋', true); S.player.isPlaying() ? S.player.pause() : S.player.play(); } break;
+    case 'Pointing_Up': if (watching) { flashBadge('☝️', true); pointNow(); } break;
+    case 'Victory': if (watching || S.state === 'summary') { flashBadge('✌️', true); goNext(); } break;
+  }
+}
+
+// keyboard stand-ins: Y = nod, N = shake, and P = palm, I = pointing, V = victory (any mode; handy without a camera)
 addEventListener('keydown', (e) => {
   if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName) || e.metaKey || e.ctrlKey) return;
   if (e.key === 'y' || e.key === 'Y') onGesture('nod');
   else if (e.key === 'n' || e.key === 'N') onGesture('shake');
+  else if (e.key === 'p' || e.key === 'P') handAction('Open_Palm');
+  else if (e.key === 'i' || e.key === 'I') handAction('Pointing_Up');
+  else if (e.key === 'v' || e.key === 'V') handAction('Victory');
 });
 
 // ---------- voice chat ----------
