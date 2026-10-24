@@ -17,7 +17,7 @@ export function tool(name) {
   const exe = path.join(config.binDir, process.platform === 'win32' ? `${name}.exe` : name);
   return fs.existsSync(exe) ? exe : name;
 }
-const toolEnv = () => ({ ...process.env, PATH: [path.dirname(process.execPath), config.binDir, process.env.PATH].filter(Boolean).join(path.delimiter) });
+const toolEnv = () => ({ ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', PATH: [path.dirname(process.execPath), config.binDir, process.env.PATH].filter(Boolean).join(path.delimiter) });
 
 export function run(cmd, args, { timeoutMs = 120000, binary = false } = {}) {
   return new Promise((resolve, reject) => {
@@ -274,9 +274,14 @@ export async function grabFrames({ youtubeId, videoUrl }, videoTime, gaze) {
 export async function searchVideos(query, { n = 6, recent = false } = {}) {
   const q = String(query || '').trim().slice(0, 120);
   if (!q) return [];
-  const out = await run(tool('yt-dlp'), ['--flat-playlist', '--no-warnings', '--js-runtimes', `node:${process.execPath}`, '--cache-dir', config.ytCacheDir,
-    '--print', '%(id)s\t%(duration)s\t%(title)s\t%(channel)s\t%(view_count)s', `${recent ? 'ytsearchdate' : 'ytsearch'}${Math.min(10, n)}:${q}`], { timeoutMs: 30000 });
-  return out.split(/\r?\n/).map((l) => l.split('\t')).filter((p) => validYtId(p[0])).map((p) => ({
-    youtubeId: p[0], duration: Number(p[1]) || null, title: p[2], channel: p[3] !== 'NA' ? p[3] : null, views: Number(p[4]) || null, url: `https://www.youtube.com/watch?v=${p[0]}`,
-  }));
+  // -j (JSON lines) instead of --print: on the Windows box --print goes out in the console codepage and mangles Korean titles
+  const out = await run(tool('yt-dlp'), ['--flat-playlist', '--no-warnings', '-j', '--js-runtimes', `node:${process.execPath}`, '--cache-dir', config.ytCacheDir,
+    `${recent ? 'ytsearchdate' : 'ytsearch'}${Math.min(10, n)}:${q}`], { timeoutMs: 30000 });
+  const res = [];
+  for (const l of out.split(/\r?\n/)) {
+    let j; try { j = JSON.parse(l); } catch { continue; }
+    if (!validYtId(j.id)) continue;
+    res.push({ youtubeId: j.id, duration: Number(j.duration) || null, title: j.title, channel: j.channel || j.uploader || null, views: Number(j.view_count) || null, url: `https://www.youtube.com/watch?v=${j.id}` });
+  }
+  return res;
 }
