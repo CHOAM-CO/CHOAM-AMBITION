@@ -94,7 +94,7 @@ async function download({ id, addAfter }) {
     if (!isCached(id)) {
       const t0 = Date.now();
       await run(tool('yt-dlp'), [
-        '--no-playlist', '--no-progress', '--newline', '--no-warnings', '--match-filter', `duration<=?${MAX_DURATION_S}`,
+        '--no-playlist', '--no-progress', '--newline', '--no-warnings', '--match-filter', `duration<=?${MAX_DURATION_S} & !is_live`,
         '--js-runtimes', `node:${process.execPath}`, '--ffmpeg-location', config.binDir, '--cache-dir', config.ytCacheDir,
         // <=720p, video-only, h264 preferred (fast ffmpeg seeks)
         '-f', 'bv*[height<=720][vcodec^=avc1][ext=mp4]/bv*[height<=720][ext=mp4]/b[height<=720][ext=mp4]/b[height<=720]',
@@ -167,6 +167,19 @@ export async function addVideo(input) {
   }
   if (!isCached(id)) enqueue(id, { addAfter: false });
   return { ok: true, existing: existed, video: (await listYoutube()).find((v) => v.id === id) };
+}
+
+export function removeVideo(input) {
+  const id = parseYtInput(input);
+  if (!id) throw httpErr(400, 'not a YouTube URL or id');
+  chain = chain.then(async () => {
+    const cur = (await readCatalog()).filter((e) => e.id !== id);
+    const tmp = `${catalogFile()}.tmp`;
+    await fsp.writeFile(tmp, JSON.stringify(cur, null, 2));
+    await fsp.rename(tmp, catalogFile());
+    catalog = cur; state.delete(id);
+  }).catch((e) => log('catalog write failed', e.message));
+  return chain.then(() => ({ ok: true, removed: id }));
 }
 
 export const statusOf = (id) => ({ videoId: id, cached: isCached(id), ...(state.get(id) || { state: isCached(id) ? 'cached' : 'unknown' }) });

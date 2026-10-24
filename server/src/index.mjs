@@ -188,6 +188,7 @@ async function route(req, res, url) {
     return send(res, r.ok ? 200 : 400, r);
   }
   if (method === 'POST' && p === '/api/youtube/add') return send(res, 200, await yt.addVideo((await readJson(req)).url));
+  if (method === 'POST' && p === '/api/youtube/remove') return send(res, 200, await yt.removeVideo((await readJson(req)).url));
   let ym;
   if (method === 'GET' && (ym = p.match(/^\/api\/youtube\/status\/([^/]+)$/))) return send(res, 200, yt.statusOf(ym[1]));
   if (method === 'POST' && p === '/api/asr') return send(res, 200, await handleAsr(req, url));
