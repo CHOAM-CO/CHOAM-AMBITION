@@ -1,15 +1,15 @@
-import { api, MOCK, PARAMS } from './api.js?v=r22';
-import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r22';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r22';
-import { EyeTheiaSource } from './eyetheia.js?v=r22';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r22';
-import { grab, fullFrame } from './capture.js?v=r22';
-import { toast, addCapture, clearCaptures, renderScenes, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r22';
-import { HeadGestures } from './gesture.js?v=r22';
-import { ExpressionDetector, SIM } from './expression.js?v=r22';
-import { Dwell } from './dwell.js?v=r22';
-import { Voice } from './voice.js?v=r22';
-import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r22';
+import { api, MOCK, PARAMS } from './api.js?v=r23';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r23';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r23';
+import { EyeTheiaSource } from './eyetheia.js?v=r23';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r23';
+import { grab, fullFrame } from './capture.js?v=r23';
+import { toast, addCapture, clearCaptures, renderScenes, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r23';
+import { HeadGestures } from './gesture.js?v=r23';
+import { ExpressionDetector, SIM } from './expression.js?v=r23';
+import { Dwell } from './dwell.js?v=r23';
+import { Voice } from './voice.js?v=r23';
+import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r23';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -459,9 +459,9 @@ function onOffer(ev, token) {
 }
 async function onPlay(ev, token) {
   if (!ev || token !== S.token) return;
+  if (ev.kind === 'article') { openReader(ev); return; } // the reader does not wipe the chat: open while the agent still talks
   for (let i = 0; i < 20 && agentVoice.speaking; i++) await new Promise((r) => setTimeout(r, 200)); // let "바로 틀어드릴게요" finish
   if (token !== S.token) return;
-  if (ev.kind === 'article') { openReader(ev); return; }
   const url = ev.url || `https://www.youtube.com/watch?v=${ev.youtubeId}`;
   chatAdd({ who: 'sys', text: '영상 준비 중…', dm: false });
   let v = null;
