@@ -6,6 +6,7 @@ import * as store from './store.mjs';
 import { visionModel, visionPayload } from './ai.mjs';
 import { buildContext, runSearchAgent, recordTurn } from './chat.mjs';
 import * as yt from './youtube.mjs';
+import { readArticle } from './article.mjs';
 import { transcribe } from './asr.mjs';
 import { synthWav } from '../tts/index.mjs';
 
@@ -75,8 +76,17 @@ async function runTurn({ session, body, trigger, text, emit, say, isClosed, t0, 
     const pend = cur?.pendingOffer && Date.now() - cur.pendingOffer.at < 5 * 60000 && (cur.pendingOffer.kind === 'video' || cur.pendingOffer.kind === 'article') ? cur.pendingOffer : null;
     if (pend && (forceSearch || keywordAnswer(text) === 'yes')) {
       out.mode = 'PLAY'; out.tGate = Date.now() - t0;
-      emit({ type: 'play', kind: pend.kind, ...(pend.youtubeId ? { youtubeId: pend.youtubeId } : {}), title: pend.title, url: pend.url });
-      const line = pend.kind === 'video' ? '네, 바로 틀어드릴게요.' : '네, 기사 열어드릴게요.';
+      if (pend.kind === 'article') {
+        const a = await readArticle(pend.url, 7000); // warmed when the offer was made
+        const ok = !a.error;
+        emit({ type: 'play', kind: 'article', url: ok ? a.url : pend.url, title: ok ? a.title : pend.title, ...(pend.site || a.site ? { site: pend.site || a.site } : {}), ...(ok && a.summary ? { summary: a.summary } : {}), ...(a.error ? { error: a.error } : {}) });
+        const line = ok && a.summary ? `기사 요약하면 ${a.summary}` : '네, 기사 열어드릴게요.';
+        splitSentences(line, true)[0].forEach(sayAll);
+        await clearOffer(); await recordTurn(session, body, text, line, []);
+        return out;
+      }
+      emit({ type: 'play', kind: 'video', youtubeId: pend.youtubeId, title: pend.title, url: pend.url });
+      const line = '네, 바로 틀어드릴게요.';
       sayAll(line); await clearOffer(); await recordTurn(session, body, text, line, []);
       return out;
     }

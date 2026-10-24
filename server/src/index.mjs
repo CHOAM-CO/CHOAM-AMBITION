@@ -9,6 +9,7 @@ import * as yt from './youtube.mjs';
 import { handleChat } from './chat.mjs';
 import { handleVoiceTurn, handleVoiceTalk } from './voice.mjs';
 import { transcribe } from './asr.mjs';
+import { readArticle } from './article.mjs';
 import { handleScene, listScenes, nowLine } from './scene.mjs';
 import { getPack, ensurePack, contentBlock, packStatus } from './pack.mjs';
 import { ttsRoute } from '../tts/index.mjs';
@@ -191,6 +192,7 @@ async function route(req, res, url) {
     return send(res, r.ok ? 200 : 400, r);
   }
   if (method === 'POST' && p === '/api/youtube/add') { const r = await yt.addVideo((await readJson(req)).url); if (r.video?.id) ensurePack(r.video.id); return send(res, 200, r); }
+  if (method === 'GET' && p === '/api/article') return send(res, 200, await readArticle(url.searchParams.get('url')));
   let pm;
   if (method === 'GET' && (pm = p.match(/^\/api\/pack\/([^/]+)$/))) { if (!yt.validYtId(pm[1])) throw new HttpError(400, 'invalid youtubeId'); const pk = await getPack(pm[1]); if (!pk) { ensurePack(pm[1]); return send(res, 200, await packStatus(pm[1])); } return send(res, 200, url.searchParams.get('raw') === '1' ? pk : { ...pk, subs: undefined, subCount: pk.subs?.length || 0 }); }
   if (method === 'POST' && p === '/api/youtube/remove') return send(res, 200, await yt.removeVideo((await readJson(req)).url));

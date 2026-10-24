@@ -4,10 +4,16 @@
   "private": true,
   "type": "module",
   "main": "src/index.mjs",
-  "scripts": { "start": "node src/index.mjs" },
-  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/index.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "@mariozechner/pi-agent-core": "0.73.1",
-    "@mariozechner/pi-ai": "0.73.1"
+    "@mariozechner/pi-ai": "0.73.1",
+    "@mozilla/readability": "^0.6.0",
+    "linkedom": "^0.18.12"
   }
 }

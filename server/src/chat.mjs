@@ -5,6 +5,7 @@ import { config } from './config.mjs';
 import * as store from './store.mjs';
 import * as yt from './youtube.mjs';
 import { nowLine, memoryBlock, kstFull } from './scene.mjs';
+import { resolveUrl, readArticle } from './article.mjs';
 import { getPack, ensurePack, contentBlock } from './pack.mjs';
 import { visionModel, summaryModel, visionPayload, summaryPayload, parseJson, textOf, normLabel } from './ai.mjs';
 
@@ -148,7 +149,8 @@ export async function recordTurn(session, body, text, reply, items) {
 export async function runSearchAgent({ session, body, ctx, note, images, frames, onTool }) {
   const ta = Date.now();
   const tools = []; const seen = new Set(); let answer = null; let items = []; let captureId; const seenYt = new Map(); let offerOut = null;
-  const track = (r) => { for (const x of r.results || []) seen.add(x.url); if (r.searchUrl) seen.add(r.searchUrl); return r; };
+  const srcByUrl = new Map();
+  const track = (r) => { for (const x of r.results || []) { seen.add(x.url); srcByUrl.set(x.url, x.source); } if (r.searchUrl) seen.add(r.searchUrl); return r; };
   const timed = (name, fn) => async (_id, params) => { onTool?.(name); const s = Date.now(); const out = await fn(params); tools.push(`${name}:${Date.now() - s}ms`); return out; };
   const tool = (name, description, parameters, fn) => ({ name, label: name, description, parameters, execute: timed(name, fn) });
   const agent = new Agent({
@@ -188,7 +190,14 @@ export async function runSearchAgent({ session, body, ctx, note, images, frames,
     items = (answer.items || []).filter((i) => i && /^https?:\/\//.test(i.url) && seen.has(i.url)).slice(0, 5).map((i) => ({ name: i.name, ...(i.price ? { price: i.price } : {}), url: i.url, source: i.source }));
     const o = answer.offer;
     if (o && o.kind === 'video' && seenYt.has(o.youtubeId)) { const v = seenYt.get(o.youtubeId); offerOut = { kind: 'video', youtubeId: v.youtubeId, title: v.title, url: v.url, ...(v.channel ? { channel: v.channel } : {}), ...(v.duration ? { duration: v.duration } : {}) }; }
-    else if (o && o.kind === 'article' && seen.has(o.url)) offerOut = { kind: 'article', title: String(o.title || '').slice(0, 140), url: o.url };
+    else if (o && o.kind === 'article' && seen.has(o.url)) {
+      // resolve Google News redirect -> real publisher URL now, so the link is readable; warm the article cache for the play turn
+      const real = await resolveUrl(o.url, 3500);
+      const src = srcByUrl.get(o.url);
+      let site = src && src !== 'news' && src !== 'web' ? src : null; if (!site) { try { site = new URL(real).hostname.replace(/^www\./, ''); } catch { /* ignore */ } }
+      offerOut = { kind: 'article', title: String(o.title || '').replace(/\s+-\s+[^-]{1,30}$/, '').slice(0, 140), url: real, ...(site ? { site } : {}) };
+      readArticle(real).catch(() => {});
+    }
     if (offerOut) await store.withSession(session.id, async () => { const s = await store.getSession(session.id); s.pendingOffer = { ...offerOut, say: reply, at: Date.now() }; await store.saveSession(s); }).catch(() => {});
     if (items.some((i) => i.price) && (frames.crop || frames.full)) {
       // keep what the viewer asked about for the summary: stored as a strong-interest capture
