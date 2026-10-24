@@ -72,9 +72,12 @@ async function newsSearch(query) {
     }
     return out;
   };
-  let r = await one(query);
-  if (!r.length) { const short = query.split(/\s+/).slice(0, 3).join(' '); if (short && short !== query) r = await one(short); }
-  return r;
+  // Google News is picky: long queries / uncommon Latin words (e.g. "Grandes") give 0 hits, so relax step by step.
+  const toks = query.split(/\s+/).filter(Boolean);
+  const noLatin = toks.filter((t) => !/^[A-Za-z]{4,}$/.test(t)).join(' ');
+  const variants = [...new Set([query, noLatin, toks.slice(0, 3).join(' '), toks.slice(0, 2).join(' ')])].filter(Boolean);
+  for (const q of variants) { const r = await one(q); if (r.length) return r; }
+  return [];
 }
 
 export async function webSearch(query) {
