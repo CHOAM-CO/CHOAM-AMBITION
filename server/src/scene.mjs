@@ -3,6 +3,7 @@ import { completeSimple } from '@mariozechner/pi-ai';
 import { config } from './config.mjs';
 import * as store from './store.mjs';
 import * as yt from './youtube.mjs';
+import { ensurePack } from './pack.mjs';
 import { visionModel, visionPayload, parseJson, textOf } from './ai.mjs';
 
 const log = (...a) => console.log(new Date().toISOString(), '[scene]', ...a);
@@ -43,6 +44,7 @@ export async function handleScene(body, { HttpError }) {
   if (!session) throw new HttpError(404, 'unknown sessionId');
   const videoTime = Number.isFinite(+body.videoTime) ? Math.max(0, +body.videoTime) : 0;
   const youtubeId = body.youtubeId || undefined;
+  if (youtubeId && yt.validYtId(youtubeId)) ensurePack(youtubeId);
 
   // rate guard + reservation, atomic per session: drop if the last scene was < 2 s ago in wall clock or video time
   let skipped = false;

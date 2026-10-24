@@ -22,6 +22,7 @@ OUTPUT FORMAT: the very first line is exactly ONE tag, nothing else on that line
 [SKIP]    - (only when the viewer said nothing) there is nothing worth saying.
 After [SAY]: 1-2 SHORT sentences, each ending with . ? or !, no markdown, no lists, no emoji, never read out URLs or long numbers, never identify real people by face. Never guess brands or model names: name a brand/model only if its logo or text is clearly legible in the frame; otherwise describe generically (e.g. "수납함", "모니터 암"). You may end with a brief friendly follow-up question. Be concrete about what is on screen when relevant.
 When the viewer said nothing (idle / follow-up): either [SKIP], or [SAY] one short natural comment or question about what is on screen right now (or a gentle follow-up to your own last line). Don't repeat what you already said in the recent conversation.
+CONTENT FIRST: the viewer wants to talk about what they WATCH (who/what/why), not shop. Use the 영상 맥락 block (title, channel, description, subtitles, research hooks). People are named only if that context names them and what is visible fits - never from a face alone (otherwise describe generically); name games/anime only from context or legible on-screen text. Mention products/prices/links only if the viewer asks or it is clearly a product video. When reacting, a good line is: one short observation + one timely hook from the context + one offer question ("어제 경기 결과라도 찾아볼까요?"). If "에이전트가 방금 시청자에게 한 제안" is shown and the viewer accepts it (응/네/좋아/찾아줘/yes), answer [SEARCH] (the lookup runs for that offer); if they decline, [SAY] a short acknowledgement.
 The user message has "현재 시각" (Asia/Seoul wall clock), "현재 영상 위치" and a chronological "장면 메모리" (oldest to newest: scene transcripts, what the viewer looked at, their yes/no feedback), each line stamped [HH:MM:SS 실제시각 (N분 N초 전) | 영상 1분 35초]. Answer questions about earlier moments from it ("아까 그 빨간 가방 몇 분에 나왔지?", "아까 본 장면들 시간순으로 말해줘", "5분 전에 본 거 뭐였지?") and about the time ("지금 몇 시야?" -> read the exact 시 and 분 from the 현재 시각 line, e.g. 오후 1시 00분; no rounding, no hedging like 전/쯤/거의, never guess the hour or am/pm yourself). Resolve "N분 전 / 아까 / 방금 / 처음에 / 마지막으로" against the wall-clock ages in parentheses (pick the entry whose age is closest to N minutes), and "영상 N분쯤 / N분 장면" against the 영상 position. List items in chronological order. Say video positions naturally as written in the memory ("1분 35초", "20초"), never "00분 20초". Never invent entries that are not in the memory; if nothing matches, say so. Memory/time answers are [SAY], never [SEARCH].`;
 
 const EMOJI = /[\p{Extended_Pictographic}️]/gu;
@@ -51,7 +52,7 @@ function splitSentences(buf, final) {
 
 // Shared turn core for /api/voice/turn and /api/voice/talk. Emits say/tool/items/ignored/answer via the callbacks;
 // returns {mode, tGate, tools}. The caller owns the stream, `done` and the log line.
-async function runTurn({ session, body, trigger, text, emit, say, isClosed, t0, hint = '', asking = false, framesPromise = null }) {
+async function runTurn({ session, body, trigger, text, emit, say, isClosed, t0, hint = '', asking = false, framesPromise = null, forceSearch = false }) {
   const out = { mode: '', tGate: null, tools: [] };
   const spoken = [];
   // First line of a reply: if long, cut at the first clause comma (>= 8 chars in) so seq 0 synthesizes fast.
@@ -67,6 +68,9 @@ async function runTurn({ session, body, trigger, text, emit, say, isClosed, t0, 
   };
   const { frames, images, note, ctx } = await buildContext(session, body, trigger, framesPromise);
   const instruction = (trigger === 'user' ? '' : (trigger === 'idle' ? '\n(시청자는 말이 없어요. idle: 화면에 대해 먼저 한마디 할 만하면 [SAY], 아니면 [SKIP].)' : '\n(시청자가 방금 당신의 말에 답이 없어요. follow-up: 가볍게 이어서 한마디 하거나 [SKIP].)')) + hint;
+  const clearOffer = () => store.withSession(session.id, async () => { const s = await store.getSession(session.id); if (s?.pendingOffer) { delete s.pendingOffer; await store.saveSession(s); } }).catch(() => {});
+  if (trigger === 'user') clearOffer(); // the viewer reacted to the offer (accept goes to SEARCH below, anything else drops it)
+  if (forceSearch) { out.mode = 'SEARCH'; out.tGate = Date.now() - t0; return searchPath(); }
   const stream = streamSimple(visionModel, {
     systemPrompt: VOICE_SYSTEM,
     messages: [{ role: 'user', timestamp: Date.now(), content: [...images, { type: 'text', text: `${note}\n${ctx}${instruction}` }] }],
@@ -100,13 +104,17 @@ async function runTurn({ session, body, trigger, text, emit, say, isClosed, t0, 
   }
   // SEARCH
   if (trigger !== 'user') return out;
-  sayAll(FILLERS[Math.floor(Math.random() * FILLERS.length)]);
-  const r = await runSearchAgent({ session, body, ctx, note, images, frames, onTool: (name) => emit({ type: 'tool', name }) });
-  out.tools = r.tools;
-  if (r.items.length) emit({ type: 'items', items: r.items, ...(r.captureId ? { captureId: r.captureId } : {}) });
-  const [ss] = splitSentences(r.reply, true); ss.forEach(sayAll);
-  await recordTurn(session, body, text, r.reply, r.items);
-  return out;
+  return searchPath();
+
+  async function searchPath() {
+    sayAll(FILLERS[Math.floor(Math.random() * FILLERS.length)]);
+    const r = await runSearchAgent({ session, body, ctx, note, images, frames, onTool: (name) => emit({ type: 'tool', name }) });
+    out.tools = r.tools;
+    if (r.items.length) emit({ type: 'items', items: r.items, ...(r.captureId ? { captureId: r.captureId } : {}) });
+    const [ss] = splitSentences(r.reply, true); ss.forEach(sayAll);
+    await recordTurn(session, body, text, r.reply, r.items);
+    return out;
+  }
 }
 
 function openStream(res) {
@@ -122,9 +130,12 @@ export async function handleVoiceTurn(body, req, res, { HttpError }) {
   const t0 = Date.now();
   const session = await store.getSession(body.sessionId);
   if (!session) throw new HttpError(404, 'unknown sessionId');
-  const trigger = ['user', 'idle', 'followup'].includes(body.trigger) ? body.trigger : 'user';
-  const text = typeof body.text === 'string' ? body.text.trim().slice(0, 600) : '';
+  const accept = body.trigger === 'accept'; // viewer said yes (thumb/nod/voice) to the agent's pending offer: run that search now
+  if (accept && !session.pendingOffer) throw new HttpError(409, 'no pending offer');
+  const trigger = accept ? 'user' : (['user', 'idle', 'followup'].includes(body.trigger) ? body.trigger : 'user');
+  const text = accept ? (typeof body.text === 'string' && body.text.trim() ? body.text.trim().slice(0, 600) : '응, 찾아줘') : (typeof body.text === 'string' ? body.text.trim().slice(0, 600) : '');
   if (trigger === 'user' && !text) throw new HttpError(400, 'text required for trigger "user"');
+  if (accept) body = { ...body, text };
 
   const st = openStream(res); const emit = st.emit;
   let ttfs = null;
@@ -141,7 +152,7 @@ export async function handleVoiceTurn(body, req, res, { HttpError }) {
       });
       if (limited) { r.mode = 'idle-rate-limited'; return finish({ skipped: 'rate_limit' }); }
     }
-    r = await runTurn({ session, body, trigger, text, emit, say, isClosed: () => st.closed, t0 });
+    r = await runTurn({ session, body, trigger, text, emit, say, isClosed: () => st.closed, t0, forceSearch: accept });
     return finish();
   } catch (e) {
     log('turn failed', e.stack || e.message);

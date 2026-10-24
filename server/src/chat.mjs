@@ -5,6 +5,7 @@ import { config } from './config.mjs';
 import * as store from './store.mjs';
 import * as yt from './youtube.mjs';
 import { nowLine, memoryBlock, kstFull } from './scene.mjs';
+import { getPack, ensurePack, contentBlock } from './pack.mjs';
 import { visionModel, summaryModel, visionPayload, summaryPayload, parseJson, textOf, normLabel } from './ai.mjs';
 
 const log = (...a) => console.log(new Date().toISOString(), '[chat]', ...a);
@@ -36,6 +37,11 @@ export async function danawaSearch(query) {
   return { results: [{ name: `다나와 검색: ${query}`, url: searchUrl, source: 'danawa' }], searchUrl, note: 'parsing failed; only the search URL is available' };
 }
 
+export async function fetchPageText(url, max = 3500) {
+  const html = await fetchText(url, 8000);
+  return decode(html.replace(/<(script|style|nav|footer|header)[\s\S]*?<\/\1>/gi, ' ')).slice(0, max);
+}
+
 export async function webSearch(query) {
   const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
   try {
@@ -46,7 +52,9 @@ export async function webSearch(query) {
       const g = /[?&]uddg=([^&]+)/.exec(u); if (g) u = decodeURIComponent(g[1]);
       if (u.startsWith('//')) u = 'https:' + u;
       if (!/^https?:\/\//.test(u)) continue;
-      out.push({ name: decode(m[2]).slice(0, 120), url: u, source: 'web' });
+      const tail = html.slice(m.index, m.index + 2500);
+      const sn = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/.exec(tail);
+      out.push({ name: decode(m[2]).slice(0, 120), url: u, source: 'web', ...(sn ? { snippet: decode(sn[1]).slice(0, 240) } : {}) });
       if (out.length >= 5) break;
     }
     if (out.length) return { results: out };
@@ -56,16 +64,17 @@ export async function webSearch(query) {
 
 const GATE_SYSTEM = `You are the voice of a friendly shopping/video assistant that watches a video together with the viewer. The viewer speaks; you receive speech-to-text. The microphone also picks up the VIDEO'S OWN AUDIO (narration, vlogger talk, music lyrics), so first decide whether the text is the viewer addressing the assistant.
 addressed=true: a question or request to the assistant (찾아줘, 알려줘, 이거 뭐야, 얼마야...), a reaction/comment to the assistant about what is on screen, or a follow-up in the ongoing conversation.
+If the viewer accepts the pending offer, set needsTools=true.
 addressed=false: sounds like the video's narration or presenter talk (greetings to 여러분/구독자, describing their own purchases, "저는/제가 ... 했는데"), song lyrics, fragments, or unrelated noise.
 needsTools=true when answering needs a live lookup: product model name + price, where to buy, anything requiring the web or a price comparison.
 Answer with ONE JSON object only: {"addressed": bool, "needsTools": bool, "reply": string|null}
-reply (only when addressed and not needsTools): natural Korean polite speech (해요체), 1-3 short sentences, spoken aloud by TTS: no markdown, no URLs, no emoji, no lists. You may look at the attached frame (full frame, and a crop around the viewer's gaze ring - never mention the ring). Never identify real people by face. Never guess brands or model names: name a brand/model only if its logo or text is clearly legible in the frame; otherwise describe generically (e.g. "수납함", "모니터 암"). Otherwise null.
+reply (only when addressed and not needsTools): natural Korean polite speech (해요체), 1-3 short sentences, spoken aloud by TTS: no markdown, no URLs, no emoji, no lists. You may look at the attached frame (full frame, and a crop around the viewer's gaze ring - never mention the ring). Never identify real people by face. Never guess brands or model names: name a brand/model only if its logo or text is clearly legible in the frame; otherwise describe generically (e.g. "수납함", "모니터 암"). Focus on the CONTENT of the video (who / what / why it matters), NOT on products: talk shopping, prices or links only when the viewer asks or it is clearly a product video (haul/review). People are named ONLY if the 영상 맥락 (title, description, subtitles, on-screen text) names them and what is visible fits; never from a face alone, otherwise describe generically. Name games/anime only from the context or legible on-screen text. "에이전트가 방금 시청자에게 한 제안" is an offer you made; if the viewer accepts it (응/네/좋아/찾아줘/yes) that is a lookup request for that offer's search query. Otherwise null.
 The user message has "현재 시각" (Asia/Seoul wall clock), "현재 영상 위치" and a chronological "장면 메모리" (oldest to newest: scene transcripts, what the viewer looked at, their yes/no feedback), each line stamped [HH:MM:SS 실제시각 (N분 N초 전) | 영상 1분 35초]. Answer questions about earlier moments from it ("아까 그 빨간 가방 몇 분에 나왔지?", "아까 본 장면들 시간순으로 말해줘", "5분 전에 본 거 뭐였지?") and about the time ("지금 몇 시야?" -> read the exact 시 and 분 from the 현재 시각 line, e.g. 오후 1시 00분; no rounding, no hedging like 전/쯤/거의, never guess the hour or am/pm yourself). Resolve "N분 전 / 아까 / 방금 / 처음에 / 마지막으로" against the wall-clock ages in parentheses (pick the entry whose age is closest to N minutes), and "영상 N분쯤 / N분 장면" against the 영상 position. List items in chronological order. Say video positions naturally as written in the memory ("1분 35초", "20초"), never "00분 20초". Never invent entries that are not in the memory; if nothing matches, say so.`;
 
 const AGENT_SYSTEM = `You are the voice assistant of a viewer who is watching a video; the viewer just asked you something that needs a lookup. You see the current frame (and a crop around the viewer's gaze ring; the ring is only a gaze marker, never mention it).
 Work fast: ideally ONE search call then answer (each extra round trip costs seconds). You may call tools in parallel.
 1. Work out WHAT they mean (the thing near the gaze ring unless they say otherwise). Identify the exact model if possible: logo, shape, text in the frame, the video title, recent labels. Say so honestly if you can only narrow it down.
-2. For prices of products call danawa_search with the best model-name query (Korean/English model number beats generic words). Only retry with a different query if the results are empty or clearly unrelated. web_search is for other facts. look_at_screen re-shows the images.
+2. If the viewer accepted a pending offer (see 에이전트가 방금 시청자에게 한 제안), run its search with web_search (news/results/scores/facts; fetch_url a result when snippets lack the facts) and reply with the concrete findings: who/what, score or outcome, date. Otherwise for prices of products call danawa_search with the best model-name query (Korean/English model number beats generic words). Only retry with a different query if the results are empty or clearly unrelated. web_search is for other facts and news; fetch_url reads one page. look_at_screen re-shows the images.
 3. Finish with answer(): reply = 1-3 short natural Korean polite sentences (해요체) for TTS: say the product name and the lowest price you found; NO markdown, NO URLs, NO emoji. items = the best 1-5 results copied from the tool results (name, price, url, source exactly as returned). Never invent prices or URLs. If nothing reliable was found, say so and give the search link item.
 The user message has "현재 시각" (Asia/Seoul wall clock), "현재 영상 위치" and a chronological "장면 메모리" (oldest to newest: scene transcripts, what the viewer looked at, their yes/no feedback), each line stamped [HH:MM:SS 실제시각 (N분 N초 전) | 영상 1분 35초]. Answer questions about earlier moments from it ("아까 그 빨간 가방 몇 분에 나왔지?", "아까 본 장면들 시간순으로 말해줘", "5분 전에 본 거 뭐였지?") and about the time ("지금 몇 시야?" -> read the exact 시 and 분 from the 현재 시각 line, e.g. 오후 1시 00분; no rounding, no hedging like 전/쯤/거의, never guess the hour or am/pm yourself). Resolve "N분 전 / 아까 / 방금 / 처음에 / 마지막으로" against the wall-clock ages in parentheses (pick the entry whose age is closest to N minutes), and "영상 N분쯤 / N분 장면" against the 영상 position. List items in chronological order. Say video positions naturally as written in the memory ("1분 35초", "20초"), never "00분 20초". Never invent entries that are not in the memory; if nothing matches, say so. get_time returns the wall clock.`;
 
@@ -88,7 +97,10 @@ export async function buildContext(session, body, trigger = 'user', framesPromis
   const caps = allCaps.slice(-6);
   const recent = caps.filter((c) => c.item).map((c) => `${c.item.label} (${c.item.category})`);
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, 600) : '';
-  const ctx = `${nowLine(body.videoTime)}\n영상 제목: ${body.videoTitle || session.videoTitle || '(알 수 없음)'}\n재생 시각: ${Math.round(Number(body.videoTime) || 0)}초\n최근 시선이 머문 것들: ${recent.length ? recent.join(', ') : '(없음)'}\n장면 메모리 (오래된 것 → 최신, 실제시각은 한국 시간):\n${memoryBlock(fresh, allCaps)}\n최근 대화:\n${historyText(session.chat)}\n\n${trigger === 'user' ? `시청자 발화: "${text}"` : ''}`;
+  const ytId = body.youtubeId || yt.parseYtInput(session.videoUrl);
+  let pack = null; if (ytId) { pack = await getPack(ytId); if (!pack || pack.status !== 'ready') ensurePack(ytId); }
+  const offer = fresh.pendingOffer && Date.now() - fresh.pendingOffer.at < 5 * 60000 ? fresh.pendingOffer : null;
+  const ctx = `${nowLine(body.videoTime)}\n영상 맥락 (메타데이터/자막/조사 결과 - 사람은 여기에 이름이 있을 때만 이름으로 부르세요):\n${ytId ? contentBlock(pack, body.videoTime) : '(영상 메타데이터 없음)'}\n${offer ? `에이전트가 방금 시청자에게 한 제안 (아직 답 없음): "${offer.say}" (검색어: ${offer.query || '?'})\n` : ''}영상 제목: ${body.videoTitle || session.videoTitle || '(알 수 없음)'}\n재생 시각: ${Math.round(Number(body.videoTime) || 0)}초\n최근 시선이 머문 것들: ${recent.length ? recent.join(', ') : '(없음)'}\n장면 메모리 (오래된 것 → 최신, 실제시각은 한국 시간):\n${memoryBlock(fresh, allCaps)}\n최근 대화:\n${historyText(session.chat)}\n\n${trigger === 'user' ? `시청자 발화: "${text}"` : ''}`;
   const images = [frames.full, frames.crop].filter(Boolean).map(img);
   const note = images.length ? (frames.crop ? '첫 이미지는 현재 전체 프레임, 두 번째는 시선 주변 확대 크롭이에요.' : '이미지는 현재 전체 프레임이에요.') : '(프레임을 가져오지 못했어요)';
   return { frames, images, note, ctx, text, tFrame: Date.now() - t0 };
@@ -118,6 +130,8 @@ export async function runSearchAgent({ session, body, ctx, note, images, frames,
           async ({ query }) => ({ content: [{ type: 'text', text: JSON.stringify(track(await danawaSearch(query))) }], details: {} })),
         tool('web_search', 'General web search. Returns up to 5 titles + urls.', Type.Object({ query: Type.String() }),
           async ({ query }) => ({ content: [{ type: 'text', text: JSON.stringify(track(await webSearch(query))) }], details: {} })),
+        tool('fetch_url', 'Fetch one web page as plain text (first ~3500 chars).', Type.Object({ url: Type.String() }),
+          async ({ url }) => { try { return { content: [{ type: 'text', text: await fetchPageText(url) }], details: {} }; } catch (e) { return { content: [{ type: 'text', text: `fetch failed: ${e.message}` }], details: {} }; } }),
         tool('get_time', 'Current wall-clock time (Asia/Seoul).', Type.Object({}), async () => ({ content: [{ type: 'text', text: kstFull() }], details: {} })),
         tool('look_at_screen', 'Returns the current video frame and the gaze crop again.', Type.Object({}),
           async () => ({ content: [{ type: 'text', text: 'Current frame and gaze crop:' }, ...images], details: {} })),
@@ -175,6 +189,7 @@ export async function handleChat(body, { HttpError }) {
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, 600) : '';
   if (!text) throw new HttpError(400, 'text required');
   const { frames, images, note, ctx, tFrame } = await buildContext(session, body);
+  if (session.pendingOffer) store.withSession(session.id, async () => { const s = await store.getSession(session.id); if (s?.pendingOffer) { delete s.pendingOffer; await store.saveSession(s); } }).catch(() => {});
 
   // 1) gate + chat reply in one cheap call
   const tg = Date.now();

@@ -13,13 +13,13 @@ const ytDir = () => path.join(config.mediaDir, 'yt');
 export const cachedPath = (id) => path.join(ytDir(), `${id}.mp4`);
 
 // Prefer the portable build in binDir; fall back to PATH (local dev).
-function tool(name) {
+export function tool(name) {
   const exe = path.join(config.binDir, process.platform === 'win32' ? `${name}.exe` : name);
   return fs.existsSync(exe) ? exe : name;
 }
 const toolEnv = () => ({ ...process.env, PATH: [path.dirname(process.execPath), config.binDir, process.env.PATH].filter(Boolean).join(path.delimiter) });
 
-function run(cmd, args, { timeoutMs = 120000, binary = false } = {}) {
+export function run(cmd, args, { timeoutMs = 120000, binary = false } = {}) {
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, args, { env: toolEnv(), windowsHide: true });
     const out = []; let err = '';

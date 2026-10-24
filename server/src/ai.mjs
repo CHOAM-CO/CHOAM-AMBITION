@@ -33,26 +33,28 @@ export function parseJson(text) {
   return JSON.parse(m[0]);
 }
 
-export const CATEGORIES = ['product', 'place', 'food', 'animal', 'text', 'person', 'scene', 'other'];
+export const CATEGORIES = ['person', 'product', 'object', 'game', 'animation', 'place', 'food', 'animal', 'text', 'scene', 'other'];
 
-const VISION_SYSTEM = `You analyse an image cropped from a video frame. A semi-transparent RED RING marks the viewer's estimated gaze point. The estimate is imprecise: the true gaze can be ~15-20% of the image size away from the ring.
-Task: identify what the viewer is most plausibly attending to near the ring, WHATEVER it is - a product, a place/landmark, food, an animal, text/a sign, a person, a scene/activity, or something else. Prefer what is nearest the ring; a clearly salient thing nearby is allowed. Never mention or describe the ring itself, and never treat the ring as an object.
+const VISION_SYSTEM = `You help a casual video-watching companion decide what to say about the CONTENT the viewer is looking at. You get the full frame (first image, when present), a crop around the viewer's gaze (semi-transparent RED RING = estimated gaze, imprecise: true gaze can be ~15-20% of the image size away) and a "영상 맥락" block (video metadata, subtitles near now, research with timely hooks) plus today's time.
+Task: classify what the viewer is attending to and write ONE short spoken line.
 Answer with ONE JSON object only, no prose:
 {
- "label": short Korean noun phrase for that thing (incl. colour/material for products; the place name if recognisable; the dish name for food; the species for animals; the text itself for signs; for a person only appearance/role/outfit such as "베이지 트렌치코트를 입은 여성"). null if nothing clear,
- "category": exactly one of "product" | "place" | "food" | "animal" | "text" | "person" | "scene" | "other",
- "description": one Korean sentence. For category "text": the Korean translation/explanation of the text instead,
- "clear": true only if the thing is clearly identifiable AND the viewer could plausibly want something useful about it (a shopping link, a map, a recipe, a translation, more info). false for blur, empty background, or when you are unsure,
- "confidence": 0..1 that label/category/clear are right,
- "query": short Korean web search query (2-4 words) that would help the viewer: product -> generic type + one key attribute (add brand/model only if clearly readable); place -> place name (+ city if known); food -> dish name; text -> the text; others -> a natural topic query. null if clear is false,
- "say": natural Korean polite speech (해요체), ONE sentence, a YES/NO QUESTION the viewer can answer with a head nod, tailored to the category, offering help. Examples: product "방금 그 갈색 구두 보신 거 맞죠? 찾아볼까요?"; place "저기 어딘지 궁금하세요? 찾아볼까요?"; food "저 음식 보신 거죠? 레시피나 맛집 찾아볼까요?"; text "저 글자 보신 거 맞죠? 무슨 뜻인지 알려드릴까요?"; animal "저 동물 보신 거 맞죠? 알아볼까요?"; person (outfit only) "저 분 옷차림 보신 거 맞죠? 비슷한 옷 찾아볼까요?"; scene "저 장면 궁금하세요? 더 찾아볼까요?". null if clear is false,
- "alternatives": array of up to 2 OTHER plausible things in the crop (different from "label"), most likely first; [] if none. Each: {"label", "category" (same enum), "description", "query", "say": a soft-retreat yes/no question that starts with "아 이거 아닌가요...? " and then offers this thing, e.g. "아 이거 아닌가요...? 그럼 옆에 갈색 구두요?"}
+ "label": short Korean noun phrase for the thing (null if nothing clear),
+ "category": exactly one of "person" | "product" | "object" | "game" | "animation" | "place" | "food" | "animal" | "text" | "scene" | "other",
+   person = a human on screen; game = video-game footage/UI (esports included); animation = anime/cartoon/CGI; product = ONLY when this is clearly a shopping/haul/review video and the item is the subject; object = any other item; scene = general setting/moment,
+ "description": one Korean sentence about what is happening there (for category "text": the Korean meaning of the text),
+ "clear": true when you can say something interesting about the CONTENT (a person on screen whose identity/role the context gives, a game/anime title, a notable moment). false for blur/empty background, and false for plain objects/products when this is NOT a product video,
+ "confidence": 0..1,
+ "query": short Korean web search query for the offer in "say" (e.g. "T1 어제 경기 결과", "페이커 최근 인터뷰"); null if clear is false,
+ "say": natural Korean 해요체, spoken aloud, at most 3 short sentences = (1) one observation about the content ("지금 페이커 선수 인터뷰 보고 계시네요."), (2) ONE timely hook taken from the 영상 맥락 research hooks if any fit ("찾아보니까 지금 월즈 중이라 어제 티원 경기가 있었어요!"), (3) ONE yes/no offer question answerable with a nod ("어제 경기 결과라도 찾아볼까요?"). Without a fitting hook, make the offer about the content (more about the person/game/story). Never mention the ring. null if clear is false,
+ "alternatives": array of up to 2 OTHER plausible content things in view, most likely first; [] if none. Each: {"label","category","description","query","say": a soft-retreat yes/no question starting with "아 이거 아닌가요...? " and then offering this thing}
 }
-Never identify a real person by their face or name them from appearance. LABEL CONSISTENCY (applies to "label" and every alternative): you may be given labels already used earlier in this session. If a thing is the same object/type as one of them, reuse that label EXACTLY (character for character). Only invent a new label for a genuinely different thing.`;
+IDENTITY RULES: name a person ONLY if the 영상 맥락 (title, channel, description, tags, subtitles, research people list) names them AND what is visible fits (e.g. the title says it is a Faker interview and an interviewee is on screen -> "페이커 선수"), or the name is legible on screen. Never identify anyone from their face alone; when the context does not name them, describe generically ("인터뷰하는 남성", "베이지 재킷의 해설자"). Name a game/anime/show title only from the context or legible on-screen text. Name a brand/model only if the logo/text is legible. Talk shopping only for product videos.
+LABEL CONSISTENCY (applies to "label" and every alternative): you may be given labels already used earlier in this session. If a thing is the same as one of them, reuse that label EXACTLY. Only invent a new label for a genuinely different thing.`;
 
 const normCat = (c) => { const x = String(c || '').toLowerCase().trim(); return CATEGORIES.includes(x) ? x : 'other'; };
 
-export async function analyzeCrop(jpegBuf, knownLabels = []) {
+export async function analyzeCrop(jpegBuf, knownLabels = [], { contentCtx = '', fullJpeg = null } = {}) {
   const hint = knownLabels.length
     ? `Labels already used in this session: ${JSON.stringify(knownLabels)}. Reuse one exactly if it is the same thing.`
     : 'No labels used yet in this session.';
@@ -61,8 +63,9 @@ export async function analyzeCrop(jpegBuf, knownLabels = []) {
     messages: [{
       role: 'user', timestamp: Date.now(),
       content: [
+        ...(fullJpeg ? [{ type: 'image', data: fullJpeg.toString('base64'), mimeType: 'image/jpeg' }] : []),
         { type: 'image', data: jpegBuf.toString('base64'), mimeType: 'image/jpeg' },
-        { type: 'text', text: `${hint}\nReturn the JSON for what the viewer is most plausibly attending to.` },
+        { type: 'text', text: `${contentCtx ? contentCtx + '\n\n' : ''}${hint}\n${fullJpeg ? '첫 이미지는 전체 프레임, 두 번째는 시선 주변 크롭이에요.' : '이미지는 시선 주변 크롭이에요.'} Return the JSON for what the viewer is most plausibly attending to.` },
       ],
     }],
   };

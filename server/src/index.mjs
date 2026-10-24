@@ -9,7 +9,8 @@ import * as yt from './youtube.mjs';
 import { handleChat } from './chat.mjs';
 import { handleVoiceTurn, handleVoiceTalk } from './voice.mjs';
 import { transcribe } from './asr.mjs';
-import { handleScene, listScenes } from './scene.mjs';
+import { handleScene, listScenes, nowLine } from './scene.mjs';
+import { getPack, ensurePack, contentBlock, packStatus } from './pack.mjs';
 import { ttsRoute } from '../tts/index.mjs';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -67,7 +68,10 @@ async function handleCapture(body) {
   const session = await store.getSession(body.sessionId);
   if (!session) throw new HttpError(404, 'unknown sessionId');
   const t0 = Date.now();
-  let jpeg, ytInfo = null;
+  let jpeg, ytInfo = null, fullJpeg = null;
+  const ytId = body.youtubeId || yt.parseYtInput(session.videoUrl);
+  const pack = ytId ? await getPack(ytId) : null; // never waits for the build
+  if (ytId && (!pack || pack.status !== 'ready')) ensurePack(ytId);
   if (body.image) {
     const m = /^data:image\/jpe?g;base64,(.+)$/s.exec(body.image || '');
     if (!m) throw new HttpError(400, 'image must be a data:image/jpeg;base64 URL');
@@ -75,7 +79,7 @@ async function handleCapture(body) {
     if (jpeg.length < 100 || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) throw new HttpError(400, 'image is not a valid JPEG');
   } else if (body.youtubeId) {
     if (!yt.validYtId(body.youtubeId)) throw new HttpError(400, 'invalid youtubeId');
-    try { const r = await yt.cropFrame(body.youtubeId, body.videoTime, body.gaze); jpeg = r.jpeg; ytInfo = { youtubeId: body.youtubeId, ...r.crop, seekedTo: r.t }; }
+    try { const [r, fr] = await Promise.all([yt.cropFrame(body.youtubeId, body.videoTime, body.gaze), yt.grabFrames({ youtubeId: body.youtubeId }, body.videoTime, null).catch(() => null)]); jpeg = r.jpeg; fullJpeg = fr?.full || null; ytInfo = { youtubeId: body.youtubeId, ...r.crop, seekedTo: r.t }; }
     catch (e) {
       if (e instanceof yt.NotCachedError) throw new HttpError(409, 'not_cached');
       throw e.status ? e : new HttpError(500, `frame extraction failed: ${e.message}`);
@@ -102,7 +106,8 @@ async function handleCapture(body) {
 
   // 2) vision
   let v = null;
-  try { v = await analyzeCrop(jpeg, session.labels || []); } catch (e) { meta.visionError = String(e.message || e).slice(0, 300); log('vision error', captureId, meta.visionError); }
+  const contentCtx = `${nowLine(body.videoTime)}\n영상 맥락:\n${ytId ? contentBlock(pack, num(body.videoTime)) : '(메타데이터 없음)'}${session.videoTitle ? `\n영상 제목: ${session.videoTitle}` : ''}`;
+  try { v = await analyzeCrop(jpeg, session.labels || [], { contentCtx, fullJpeg }); } catch (e) { meta.visionError = String(e.message || e).slice(0, 300); log('vision error', captureId, meta.visionError); }
   if (v) {
     meta.item = v.label ? { label: v.label, category: v.category, description: v.description } : null;
     meta.clear = !!(v.label && v.clear);
@@ -122,10 +127,11 @@ async function handleCapture(body) {
     const clear = meta.clear && meta.query && v?.say && meta.confidence >= 0.6;
     if (clear && Date.now() - (s.lastSpokenAt || 0) >= config.speakCooldownMs && !s.spoken.includes(key)) {
       speak = true; s.lastSpokenAt = Date.now(); s.spoken.push(key);
+      s.pendingOffer = { captureId, say: v.say, query: meta.query, label: meta.item.label, videoTime: meta.videoTime, at: Date.now() };
     }
     await store.saveSession(s);
   });
-  meta.speak = speak; meta.say = speak ? v.say : null;
+  meta.speak = speak; meta.say = speak ? v.say : null; if (speak) meta.offer = { query: meta.query, say: v.say };
   meta.latencyMs = Date.now() - t0;
   await store.updateCapture(meta);
   log('capture', captureId, meta.item?.category, meta.item?.label, 'speak=' + speak, meta.latencyMs + 'ms', ytInfo ? `crop ${tCrop}ms` : '');
@@ -155,7 +161,8 @@ async function handleFeedback(body) {
     await store.saveSession(s);
   });
   log('feedback', cap.captureId, body.label, body.answer);
-  return { ok: true };
+  const pend = (await store.getSession(session.id))?.pendingOffer;
+  return { ok: true, ...(body.answer === 'yes' && pend && pend.captureId === cap.captureId ? { offer: { query: pend.query, say: pend.say, acceptWith: 'POST /api/voice/turn {sessionId, trigger:"accept", ...}' } } : {}) };
 }
 
 async function handleSummary(body) {
@@ -175,6 +182,7 @@ async function route(req, res, url) {
   if (method === 'POST' && p === '/api/session') {
     const b = await readJson(req);
     const s = await store.createSession({ videoUrl: b.videoUrl, videoTitle: b.videoTitle, source: b.source === 'youtube' ? 'youtube' : 'mp4' });
+    const pid = b.youtubeId || yt.parseYtInput(b.videoUrl); if (pid) ensurePack(pid);
     return send(res, 200, { sessionId: s.id });
   }
   if (method === 'POST' && p === '/api/capture') return send(res, 200, await handleCapture(await readJson(req)));
@@ -182,7 +190,9 @@ async function route(req, res, url) {
     const r = yt.prefetch((await readJson(req)).videoId);
     return send(res, r.ok ? 200 : 400, r);
   }
-  if (method === 'POST' && p === '/api/youtube/add') return send(res, 200, await yt.addVideo((await readJson(req)).url));
+  if (method === 'POST' && p === '/api/youtube/add') { const r = await yt.addVideo((await readJson(req)).url); if (r.video?.id) ensurePack(r.video.id); return send(res, 200, r); }
+  let pm;
+  if (method === 'GET' && (pm = p.match(/^\/api\/pack\/([^/]+)$/))) { if (!yt.validYtId(pm[1])) throw new HttpError(400, 'invalid youtubeId'); const pk = await getPack(pm[1]); if (!pk) { ensurePack(pm[1]); return send(res, 200, await packStatus(pm[1])); } return send(res, 200, url.searchParams.get('raw') === '1' ? pk : { ...pk, subs: undefined, subCount: pk.subs?.length || 0 }); }
   if (method === 'POST' && p === '/api/youtube/remove') return send(res, 200, await yt.removeVideo((await readJson(req)).url));
   let ym;
   if (method === 'GET' && (ym = p.match(/^\/api\/youtube\/status\/([^/]+)$/))) return send(res, 200, yt.statusOf(ym[1]));
