@@ -1,5 +1,5 @@
 // DOM helpers: toasts, capture panel, agent bubble, summary.
-import { CONFIG } from './events.js?v=r20';
+import { CONFIG } from './events.js?v=r21';
 
 const $ = (s) => document.querySelector(s);
 export const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -109,7 +109,7 @@ export function addCapture({ thumb, videoTime, kind }) {
   if (thumb) img.src = thumb; else img.classList.add('blank');
   img.onerror = () => img.classList.add('blank');
   li.querySelector('.time').textContent = fmtTime(videoTime);
-  li.querySelector('.kind').textContent = kind === 'fixation' ? '응시' : '시선 이동';
+  li.querySelector('.kind').textContent = kind === 'fixation' ? '오래 봄' : '이동';
   $('#captures').prepend(li);
   $('#captures').scrollTo({ left: 0, behavior: 'smooth' }); // newest first: keep it in view
   capCount++; setCount();

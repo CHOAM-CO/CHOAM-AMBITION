@@ -1,8 +1,7 @@
 # NUNCHI web
 
-Static frontend (no build). Open `index.html` via any static server; `?mock=1` fakes the API, `?gaze=mouse` uses the mouse,
-`?debug=1` shows the gaze HUD, `?tracker=webgazer` uses the old WebGazer tracker (default is EyeTheia).
+정적 프런트엔드 (ES 모듈, 빌드 없음). 아무 정적 서버로 `index.html`을 열면 돼. 전체 설명, 기능, API, URL 파라미터는 루트 `README.md` 참고.
 
-Credit / license: the default gaze tracker (`js/eyetheia.js` and the ONNX models served at `/media/models/`) is derived from
-[EyeTheia](https://github.com/patherstevenson/EyeTheia) (GPL-3.0) and the iTracker model (Krafka et al., "Eye Tracking for
-Everyone"), via Eunho Jung's in-browser port; treat this tracker code and the models as GPL-3.0.
+- `?mock=1` API 가짜, `?gaze=mouse` 마우스 시선, `?debug=1` HUD와 디버그 키, `?tracker=webgazer` 예전 트래커.
+- 모든 로컬 import는 `?v=rNN`. 푸시할 때 전부 같이 올려야 해.
+- `js/eyetheia.js`와 `/media/models/`의 ONNX는 EyeTheia 파생이라 GPL-3.0.

@@ -1,4 +1,4 @@
-import { CONFIG } from './events.js?v=r20';
+import { CONFIG } from './events.js?v=r21';
 // Gaze sources: WebGazer (webcam) or mouse. Exposes latest raw point in client px.
 const WEBGAZER_SRC = 'https://cdn.jsdelivr.net/npm/webgazer@3.4.0/dist/webgazer.min.js';
 
@@ -26,7 +26,7 @@ export class WebGazerSource {
     onStatus('카메라 권한 요청 중…');
     const probe = await navigator.mediaDevices.getUserMedia({ video: true }); // throws if denied
     probe.getTracks().forEach((t) => t.stop());
-    onStatus('시선 추적 모델 불러오는 중… (처음엔 몇 초 걸려요)');
+    onStatus('준비 중…');
     if (!window.webgazer) await loadScript(WEBGAZER_SRC);
     const wg = window.webgazer;
     this.wg = wg;
@@ -87,7 +87,7 @@ export async function runCalibration(root, source, getGaze, clickMode = false) {
     root.hidden = false;
     const field = (root.innerHTML = clickMode
       ? '<p class="calib-msg">화면의 점을 눈으로 보면서 각 점을 3번씩 클릭해 주세요</p><div class="calib-field"></div>'
-      : '<p class="calib-msg">나타나는 점을 눈으로만 따라가 주세요. 클릭은 필요 없어요</p><div class="calib-field"></div>',
+      : '<p class="calib-msg">나타나는 점을 눈으로 따라가 주세요</p><div class="calib-field"></div>',
       root.querySelector('.calib-field'));
     if (clickMode) {
       await new Promise((resolve) => {
@@ -131,7 +131,7 @@ export async function runCalibration(root, source, getGaze, clickMode = false) {
     source.freeze && source.freeze();
 
     // accuracy check
-    root.innerHTML = '<p class="calib-msg">정확도 확인 중이에요. 나타나는 점을 계속 봐 주세요</p><div class="calib-field"></div><button class="btn calib-skip">건너뛰기 (보정 덜 정확)</button>';
+    root.innerHTML = '<p class="calib-msg">나타나는 점을 계속 봐 주세요</p><div class="calib-field"></div><button class="btn calib-skip">건너뛰기</button>';
     let skipped = false;
     root.querySelector('.calib-skip').onclick = () => { skipped = true; };
     const f2 = root.querySelector('.calib-field');
@@ -163,8 +163,8 @@ export async function runCalibration(root, source, getGaze, clickMode = false) {
       applied = true;
     }
     const score = isNaN(after) ? 0 : Math.max(0, Math.round(100 - (after / (innerHeight * 0.35)) * 100));
-    const verdict = score >= 70 ? '좋아요' : score >= 45 ? '쓸 만해요' : '낮아요, 다시 보정을 추천해요';
-    const line = isNaN(before) ? '얼굴이 인식되지 않았어요' : `${applied ? '보정 반영 · ' : ''}평균 오차 ${Math.round(before)}px → ${Math.round(after)}px · ${verdict}`;
+    const verdict = score >= 70 ? '좋아요' : score >= 45 ? '쓸 만해요' : '낮아요';
+    const line = isNaN(before) ? '얼굴이 보이지 않아요' : verdict;
     if (!clickMode) {
       // no buttons: show the result for 2 s, redo once if poor, then go on regardless
       attempt++;
@@ -175,7 +175,7 @@ export async function runCalibration(root, source, getGaze, clickMode = false) {
       break;
     }
     root.innerHTML = `<div class="calib-result"><h2>정확도 ${score}%</h2><p>${line}</p>
-      <div class="row"><button class="btn" id="cal-redo">다시 보정</button><button class="btn primary" id="cal-go">이대로 시작</button></div></div>`;
+      <div class="row"><button class="btn" id="cal-redo">다시 맞추기</button><button class="btn primary" id="cal-go">시작</button></div></div>`;
     const choice = await new Promise((res) => {
       root.querySelector('#cal-redo').onclick = () => res('redo');
       root.querySelector('#cal-go').onclick = () => res('go');

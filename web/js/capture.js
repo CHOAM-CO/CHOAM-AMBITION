@@ -1,6 +1,6 @@
 // Gaze normalization + (mp4 only) frame grab with a square crop around the gaze point.
 // YouTube sends no image: the server renders the frame itself from youtubeId + videoTime.
-import { CONFIG } from './events.js?v=r20';
+import { CONFIG } from './events.js?v=r21';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 

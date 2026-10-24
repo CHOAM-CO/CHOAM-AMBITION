@@ -5,8 +5,8 @@
 // which itself ports EyeTheia (https://github.com/patherstevenson/EyeTheia, GPL-3.0) and the iTracker model
 // (Krafka et al., "Eye Tracking for Everyone"). This file and the ONNX models derived from EyeTheia are
 // therefore GPL-3.0 as well.
-import { CONFIG } from './events.js?v=r20';
-import { loadOrt } from './ort.js?v=r20';
+import { CONFIG } from './events.js?v=r21';
+import { loadOrt } from './ort.js?v=r21';
 
 const ORT_SRC = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.webgpu.min.js';
 const ORT_WASM = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/';
@@ -136,7 +136,7 @@ export class EyeTheiaSource {
       this.cc[k] = c.getContext('2d', { willReadFrequently: true });
     }
 
-    onStatus('시선 모델 불러오는 중… (처음엔 30MB 정도 받아요)');
+    onStatus('준비 중…');
     await loadOrt();
     ort.env.wasm.wasmPaths = ORT_WASM;
     const url = `${this.modelBase}eyetheia_${this.modelName}.onnx`;
@@ -149,15 +149,15 @@ export class EyeTheiaSource {
         this.ep = ep; break;
       } catch (e) { console.warn('EyeTheia session failed on', ep, e); this.session = null; }
     }
-    if (!this.session) throw new Error('시선 모델을 불러오지 못했어요');
+    if (!this.session) throw new Error('준비하지 못했어요');
 
-    onStatus('얼굴 인식 모델 불러오는 중…');
+    onStatus('준비 중…');
     const { FaceLandmarker, FilesetResolver, GestureRecognizer } = await import(MP_BUNDLE);
     const fileset = await FilesetResolver.forVisionTasks(MP_WASM);
     const make = (delegate) => FaceLandmarker.createFromOptions(fileset, { baseOptions: { modelAssetPath: MP_MODEL, delegate }, runningMode: 'VIDEO', numFaces: 1, outputFaceBlendshapes: true });
     try { this.landmarker = await make('GPU'); } catch { this.landmarker = await make('CPU'); }
     // hand gestures on the same video, loaded in the background so start-up is not slowed
-    import('./hands.js?v=r20').then(async (m) => {
+    import('./hands.js?v=r21').then(async (m) => {
       this.hands = new m.HandGestures((g) => this.onHand && this.onHand(g));
       this.hands.onFeedback = (f) => this.onHandFeedback && this.onHandFeedback(f);
       await this.hands.init({ GestureRecognizer }, fileset, v);

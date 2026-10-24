@@ -1,15 +1,15 @@
-import { api, MOCK, PARAMS } from './api.js?v=r20';
-import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r20';
-import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r20';
-import { EyeTheiaSource } from './eyetheia.js?v=r20';
-import { createMp4Player, createYouTubePlayer } from './player.js?v=r20';
-import { grab, fullFrame } from './capture.js?v=r20';
-import { toast, addCapture, clearCaptures, renderScenes, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r20';
-import { HeadGestures } from './gesture.js?v=r20';
-import { ExpressionDetector, SIM } from './expression.js?v=r20';
-import { Dwell } from './dwell.js?v=r20';
-import { Voice } from './voice.js?v=r20';
-import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r20';
+import { api, MOCK, PARAMS } from './api.js?v=r21';
+import { CONFIG, GazeEventDetector, GazeSmoother } from './events.js?v=r21';
+import { MouseSource, WebGazerSource, runCalibration } from './gaze.js?v=r21';
+import { EyeTheiaSource } from './eyetheia.js?v=r21';
+import { createMp4Player, createYouTubePlayer } from './player.js?v=r21';
+import { grab, fullFrame } from './capture.js?v=r21';
+import { toast, addCapture, clearCaptures, renderScenes, addWish, showBubble, bubbleActive, dismissBubble, bubbleSay, bubbleLock, flashBadge, renderSummary, fmtTime, chatAdd, chatClear, danmakuClear, handShow } from './ui.js?v=r21';
+import { HeadGestures } from './gesture.js?v=r21';
+import { ExpressionDetector, SIM } from './expression.js?v=r21';
+import { Dwell } from './dwell.js?v=r21';
+import { Voice } from './voice.js?v=r21';
+import { VadMic, AgentVoice, matchAnswer, isEchoText } from './call.js?v=r21';
 
 const $ = (s) => document.querySelector(s);
 const MOUSE = PARAMS.get('gaze') === 'mouse';
@@ -59,7 +59,7 @@ $('#btn-start').onclick = async () => {
       if (S.source.mode === 'webcam') await runCalibration($('#calib'), S.source, () => sm, PARAMS.get('calib') === 'click');
     }
   } finally { setup(null); }
-  $('#chip-src').textContent = S.source.mode === 'mouse' ? '시선: 마우스' : '시선: 웹캠';
+  $('#chip-src').textContent = S.source.mode === 'mouse' ? '마우스' : '웹캠';
   goHome();
 };
 
@@ -72,7 +72,7 @@ function askFail(e) {
     const p = document.createElement('p'); p.textContent = '카메라를 켜지 못했어요: ' + (e.message || e.name);
     const r = document.createElement('div'); r.className = 'row';
     const a = document.createElement('button'); a.className = 'btn primary'; a.textContent = '다시 시도';
-    const b = document.createElement('button'); b.className = 'btn'; b.textContent = '마우스로 대신 진행';
+    const b = document.createElement('button'); b.className = 'btn'; b.textContent = '마우스로 시작';
     a.onclick = () => res('retry'); b.onclick = () => res('mouse');
     r.append(a, b); $('#setup-msg').append(p, r);
   });
@@ -90,7 +90,7 @@ async function loadCatalog() {
     if (key !== catalogKey) { catalogKey = key; renderHome(); }
   } catch (e) {
     if (!S.catalog.length) $('#video-list').innerHTML = '<p class="muted">영상 목록을 불러오지 못했어요.</p>';
-    toast('영상 목록 오류: ' + e.message);
+    toast('영상 목록을 불러오지 못했어요');
   }
 }
 
@@ -105,7 +105,7 @@ async function loadCatalog() {
     try {
       const r = await api.addVideo(url);
       input.value = ''; input.blur();
-      toast(r.existing ? '이미 있는 영상이에요' : '영상을 추가했어요. 준비 중이에요');
+      toast(r.existing ? '이미 있는 영상이에요' : '영상을 추가했어요');
       await loadCatalog();
     } catch (err) {
       toast('영상 추가 실패: ' + (err.body?.error || err.message));
@@ -137,7 +137,7 @@ function renderHome() {
     const tx = document.createElement('div'); tx.className = 'vtxt';
     const t = document.createElement('div'); t.className = 'vtitle'; t.textContent = v.title;
     const ch = document.createElement('div'); ch.className = 'vch'; ch.textContent = v.source === 'youtube' ? 'YouTube' : 'NUNCHI 샘플';
-    const mt = document.createElement('div'); mt.className = 'vmeta'; mt.textContent = ready ? '재생 준비됨' : failed ? '5분 뒤 다시 시도해요' : '준비 중이에요…';
+    const mt = document.createElement('div'); mt.className = 'vmeta'; mt.textContent = ready ? '재생 가능' : failed ? '다시 시도 중' : '준비 중';
     tx.append(t, ch, mt); info.append(av, tx);
     card.append(th, info);
     list.appendChild(card);
@@ -170,7 +170,7 @@ async function playVideo(v) {
   S.videoUrl = v.source === 'youtube' ? `https://www.youtube.com/watch?v=${v.youtubeId}` : v.url;
   clearCaptures(); chatClear(); danmakuClear(); renderScenes([]); lastScene = 0;
   $('#watch-title').textContent = v.title;
-  $('#watch-sub').textContent = v.source === 'youtube' ? 'YouTube · 시선 + 음성 + 고개 제스처로 같이 보는 중' : '샘플 영상 · 시선 + 음성 + 고개 제스처로 같이 보는 중';
+  $('#watch-sub').textContent = 'NUNCHI랑 같이 보는 중';
   show('watch');
   const host = $('#player');
   try {
@@ -182,7 +182,7 @@ async function playVideo(v) {
   try {
     const r = await api.session({ videoUrl: S.videoUrl, videoTitle: v.title, source: v.source, youtubeId: v.youtubeId });
     if (token === S.token) S.session = r.sessionId;
-  } catch (e) { toast('세션 생성 실패 (캡처 때 다시 시도해요): ' + e.message); }
+  } catch (e) { toast('연결하지 못했어요: ' + e.message); }
   if (v.source === 'mp4') S.player.play();
 }
 
@@ -371,7 +371,7 @@ function answerYes(d, said) {
   if (d !== dlg || !d.asking) return;
   d.asking = false;
   if (d.offer) { // yes to "영상 보실래요?": the server answers with play (video / article)
-    chatAdd({ who: 'user', text: said || '응! (끄덕)' });
+    chatAdd({ who: 'user', text: said || '응 (끄덕)' });
     bubbleLock(); runTurn('', { trigger: 'accept', source: 'voice' });
     return;
   }
@@ -382,7 +382,7 @@ function answerYes(d, said) {
     return;
   }
   feedback('yes');
-  chatAdd({ who: 'user', text: said || '응! (끄덕)' });
+  chatAdd({ who: 'user', text: said || '응 (끄덕)' });
   const it = curItem();
   const isText = it.category === 'text';
   bubbleLock(); // the question line goes away; the answer lands in chat + danmaku below
@@ -421,7 +421,7 @@ function answerNo(d, said) {
 }
 function onGesture(g) {
   if (!dlg || !dlg.asking || !bubbleActive()) return;
-  flashBadge(g === 'nod' ? '끄덕' : '도리도리', g === 'nod');
+  flashBadge(g === 'nod' ? '응' : '아니', g === 'nod');
   g === 'nod' ? answerYes(dlg) : answerNo(dlg);
 }
 // ---------- facial expressions (blendshapes from the EyeTheia FaceLandmarker) ----------
@@ -440,7 +440,7 @@ function exprFire(kind) {
   const pool = CONFIG.expression.lines[kind], line = pool[(Math.random() * pool.length) | 0];
   exprShow = kind; exprShowUntil = performance.now() + 2500;
   activity();
-  chatAdd({ who: 'sys', text: `표정 감지: ${kind}`, dm: false });
+  chatAdd({ who: 'sys', text: `표정 ${kind}`, dm: false });
   chatAdd({ who: 'agent', text: line }); speakLine(line); // danmaku + chat + voice
   const p = S.player;
   if (p && sm) sceneSnap({ x: sm.x, y: sm.y }, { trigger: 'expression', expression: kind });
@@ -556,7 +556,7 @@ const isEcho = (t) => isEchoText(t, recentAgent());
 
 // agent presence: plain streamer profile (avatar ring + state text + equalizer bars), no orb
 const avEl = $('#agent-av'), avState = $('#agent-state'), eq = $('#agent-eq'), eqBars = [...eq.querySelectorAll('b')];
-const STATE_TXT = { idle: '대기 중', looking: '보는 중', listening: '듣는 중', thinking: '생각 중', speaking: '말하는 중' };
+const STATE_TXT = { idle: '대기 중', looking: '보는 중', listening: '듣는 중', thinking: '생각 중', speaking: 'NUNCHI가 말하는 중' };
 let avSt = '';
 function presenceFrame(t) {
   requestAnimationFrame(presenceFrame);
@@ -586,13 +586,13 @@ setInterval(() => {
 }, 250);
 
 // header chip: 통화 · 듣는 중 / 생각 중 / 말하는 중
-const CALL_LABEL = { loading: '준비 중', listening: '듣는 중', thinking: '생각 중', speaking: '말하는 중', muted: '마이크 꺼짐', error: '마이크 오류', off: '꺼짐', unsupported: '음성 미지원' };
+const CALL_LABEL = { loading: '마이크 준비 중', listening: '듣는 중', thinking: '생각 중', speaking: 'NUNCHI가 말하는 중', muted: '마이크 꺼짐', error: '마이크 오류', off: '음성 꺼짐', unsupported: '마이크 사용 불가' };
 function baseState() { return muted ? 'muted' : STT === 'off' ? 'off' : vadReady ? 'listening' : 'loading'; }
 function setCall(s) {
   const c = $('#chip-mic');
-  c.textContent = '통화 · ' + (CALL_LABEL[s] || s);
+  c.textContent = CALL_LABEL[s] || s;
   c.className = 'chip dwell' + (s === 'muted' ? ' mic-muted' : s === 'listening' ? ' mic-on' : s === 'error' ? ' mic-error' : s === 'speaking' ? ' call-speaking' : s === 'thinking' ? ' call-thinking' : '');
-  if (!capTimer) capText.textContent = s === 'listening' ? '말하면 채팅으로 올라가요' : CALL_LABEL[s] || s;
+  if (!capTimer) capText.textContent = CALL_LABEL[s] || s;
 }
 const refreshCall = () => { setCall(muted ? 'muted' : agentVoice.speaking ? 'speaking' : turnActive ? 'thinking' : baseState()); }; // muted stays visible whatever the agent does
 
@@ -646,7 +646,7 @@ const vadMic = STT === 'vad' ? new VadMic({
       const r = await api.asr(wav, asrContext()); // old 3-call path: asr -> turn -> tts
       const t = (r.text || '').trim();
       if (t) handleUserText(t, 'voice'); else { scheduleUnduck(500); refreshCall(); }
-    } catch (e) { toast('음성 인식 오류: ' + e.message); scheduleUnduck(500); refreshCall(); }
+    } catch (e) { toast('음성을 인식하지 못했어요'); scheduleUnduck(500); refreshCall(); }
   },
 }) : null;
 
@@ -684,7 +684,7 @@ function localAnswer(text) {
   const a = matchAnswer(text);
   if (!a) return false;
   agentVoice.stop(); caption(text);
-  flashBadge(a === 'yes' ? '음성 · 응' : '음성 · 아니', a === 'yes');
+  flashBadge(a === 'yes' ? '응' : '아니', a === 'yes');
   a === 'yes' ? answerYes(dlg, text) : answerNo(dlg, text);
   return true;
 }
@@ -785,8 +785,8 @@ async function runTalk(wav) {
             if (t.length <= CONFIG.voice.minChars && !wasAsking) { ctl.abort(); return; }
             started = true; view.start();
           } else if (ev.type === 'answer') {
-            if (ev.value && asking()) { answered = true; agentVoice.stop(); flashBadge(ev.value === 'yes' ? '음성 · 응' : '음성 · 아니', ev.value === 'yes'); ev.value === 'yes' ? answerYes(dlg, heard) : answerNo(dlg, heard); }
-          } else if (ev.type === 'error') { toast('대화 오류: ' + (ev.message || '')); }
+            if (ev.value && asking()) { answered = true; agentVoice.stop(); flashBadge(ev.value === 'yes' ? '응' : '아니', ev.value === 'yes'); ev.value === 'yes' ? answerYes(dlg, heard) : answerNo(dlg, heard); }
+          } else if (ev.type === 'error') { toast('응답 오류: ' + (ev.message || '')); }
           else view.handle(ev, { audioFromServer: true });
         });
         if (ran === false) return false;
@@ -797,7 +797,7 @@ async function runTalk(wav) {
       }
     }
   } catch (e) {
-    if (!ctl.signal.aborted && token === S.token) toast('대화 오류: ' + e.message);
+    if (!ctl.signal.aborted && token === S.token) toast('응답 오류: ' + e.message);
   } finally {
     view.clearThinking();
     if (!started && !answered) { scheduleUnduck(500); }
@@ -827,7 +827,7 @@ async function runTurn(text, { trigger, source }) {
   } catch (e) {
     if (!ctl.signal.aborted && token === S.token) {
       if (trigger === 'accept' && /409/.test(e.message)) { chatAdd({ who: 'agent', text: '더 찾을 건 없네요' }); speakLine('더 찾을 건 없네요'); }
-      else toast('대화 오류: ' + e.message);
+      else toast('응답 오류: ' + e.message);
     }
   } finally {
     view.clearThinking();
@@ -862,7 +862,7 @@ async function finish() {
   dismissBubble(); dlg = null;
   S.player && S.player.pause();
   show('summary');
-  $('#summary-body').innerHTML = '<p class="muted">정리하는 중이에요…</p>';
+  $('#summary-body').innerHTML = '<p class="muted">정리 중…</p>';
   try {
     if (!S.session) throw new Error('세션이 없어요');
     const data = await api.summary({ sessionId: S.session });
@@ -881,7 +881,7 @@ async function finish() {
 function startNextCountdown(token) {
   clearInterval(S.nextTimer);
   let left = Math.round(CONFIG.nextVideoAutoMs / 1000);
-  const label = () => { $('#next-count').textContent = `(${left}초 뒤 자동)`; };
+  const label = () => { $('#next-count').textContent = `${left}초 뒤 재생`; };
   label();
   S.nextTimer = setInterval(() => {
     if (token !== S.token || S.state !== 'summary') return clearInterval(S.nextTimer);
